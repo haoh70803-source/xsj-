@@ -45,6 +45,11 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
  * blocks. A package moves on or off this list with its context behavior.
  */
 const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
+  'packages/experimental/education-platform': { kind: 'none', reason: 'The Host resource service and DTOs construct no model input or Session events.' },
+  'packages/experimental/education-shell': { kind: 'none', reason: 'The employee editor does not construct model input, tools or Session events.' },
+  'packages/experimental/education-identity': { kind: 'none', reason: 'Employee authentication and cookies do not contribute model input or Session events.' },
+  'packages/experimental/education-storage-sqlite': { kind: 'none', reason: 'The independent business database does not contribute model prompts, tools or Session events.' },
+  'packages/experimental/education-bundle': { kind: 'indirect', reason: 'The selected creation Controller owns model-facing rules and native Agent execution.' },
   'packages/experimental/client-ui-cot-translation': { kind: 'indirect', reason: 'The translator owns optional paid queries; normal Session activation delegates startup context to the preset.' },
   'packages/experimental/cot-translation-bundle': { kind: 'indirect', reason: 'The GUI consumer delegates paid query prompts to the translator and normal activation context to the Session preset.' },
   'packages/client/product-analytics': { kind: 'none', reason: 'Desktop analytics observes selected interactions without contributing model context or Session events.' },

@@ -14,6 +14,7 @@ import { HostConnectionService } from './rpc-host.ts'
 import { ConnectionRecoveryConfigSchema, resolveConnectionConfig, type ConnectionRecoveryConfig } from './recovery-config.ts'
 
 export type {
+  ConnectionAccess,
   PeerAdmission,
   ConnectionFetchMethod,
   ConnectionFetchHandler,
@@ -26,6 +27,7 @@ export type {
   ConnectionRpcHandler,
   ConnectionRpcHandlerResult,
   ConnectionRequestRejection,
+  ConnectionRequestPolicy,
   ConnectionRpcResult,
   ConnectionRequestBodyMode,
   ConnectionTrustRequest,
@@ -37,7 +39,7 @@ export type {
   ServerResponse,
 } from './rpc.ts'
 export type { PeerId, PeerScope, RemoteInvocation } from '@deepseek-ai/dsh-typert-protocol'
-export { RpcId, transportError } from './rpc.ts'
+export { RpcId, transportError, ConnectionRpcError } from './rpc.ts'
 export { OperatorPeer } from './operator-peer.ts'
 export {
   clientRequestSchema,
@@ -48,6 +50,8 @@ export {
   serverResponseSchema,
 } from './rpc-schema.ts'
 export { HostConnectionService } from './rpc-host.ts'
+// Login consumers share the same bounded node:http-to-Fetch carrier as Connection RPC.
+export { bridge } from './http-bridge.ts'
 
 export { API_PATH } from './api-path.ts'
 
@@ -103,6 +107,8 @@ export interface ConnectionConfig {
   cookieMaxAgeDays?: number
   /** Maximum buffered JSON body for every `/api` request. Default: 300 MiB. */
   maxRequestBodyBytes?: number
+  /** Require a deployment identity policy; never accept the default operator cookie. Default: false. */
+  requireRequestPolicy?: boolean
 }
 
 export const Config: z<ConnectionConfig> = z.object({
@@ -110,6 +116,7 @@ export const Config: z<ConnectionConfig> = z.object({
   trustedHosts: z.array(String).default([]),
   cookieMaxAgeDays: z.natural().min(1).default(30),
   maxRequestBodyBytes: z.natural().min(1).default(DEFAULT_MAX_REQUEST_BODY_BYTES),
+  requireRequestPolicy: z.boolean().default(false),
 })
 
 /**
@@ -133,13 +140,13 @@ export async function apply(ctx: Context, config?: ConnectionConfig): Promise<vo
     ctx,
     trustedHosts,
     await BrowserAuth.create(ctx.root, ctx.credentials, cookieMaxAgeDays),
+    config?.requireRequestPolicy ?? false,
   )
   ctx.inject(['webServer'], (webCtx) => {
     assertImageBodyCapacity(webCtx, maxRequestBodyBytes)
     webCtx.on('webserver/index-inject', (table) => {
       table.push({ kind: 'global', name: '__DSH_CONNECTION_RECOVERY__', value: recovery })
     })
-    const fetchHandler = connection.createSharedFetchHandler(API_PATH)
     const route: WebRoute = {
       kind: 'prefix',
       path: API_PATH,
@@ -150,6 +157,7 @@ export async function apply(ctx: Context, config?: ConnectionConfig): Promise<vo
           res.end(admission.rejection === 401 ? 'unauthorized' : 'forbidden')
           return
         }
+        const fetchHandler = connection.createSharedFetchHandler(API_PATH, admission.peer)
         await webCtx.waterfall('connection/request', req, res, () => bridge(req, res, fetchHandler, maxRequestBodyBytes))
       },
     }

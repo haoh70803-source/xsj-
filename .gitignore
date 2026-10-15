@@ -9,6 +9,7 @@ lib/
 pnpm-debug.log
 .pnpm-store/
 .cache/
+apps/web/education/dist/
 examples/*/*.jsonl
 .storages/
 .sessions/

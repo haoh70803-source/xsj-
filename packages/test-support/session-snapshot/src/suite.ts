@@ -524,15 +524,16 @@ export function parseToolSchemasSnapshot(snapshot: string): ToolSchemasSnapshot 
 /**
  * Restore one sidecar schema set into a tokenized pinned header.
  *
- * @param header The parsed request header carrying a tools token or ordered tool names matching the sidecar.
+ * @param header The parsed request header carrying a tools token, matching ordered names, or no tools field for an empty catalog.
  * @param schemas The complete schemas for this full header snapshot.
- * @returns A copy of the header with its complete schemas restored.
+ * @returns A copy with restored schemas, or the unchanged header when both the field and catalog are absent.
  */
 export function restorePinnedToolSchemas(header: unknown, schemas: readonly unknown[]): unknown {
   if (header === null || typeof header !== 'object' || Array.isArray(header)) {
     throw new Error('acp-snapshot: pinned request header must be an object')
   }
   const tools = (header as { tools?: unknown }).tools
+  if (!('tools' in header) && schemas.length === 0) return header
   const namesMatch = Array.isArray(tools) && tools.length === schemas.length
     && tools.every((name, index) => {
       const schema = schemas[index]

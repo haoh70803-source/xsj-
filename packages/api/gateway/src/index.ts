@@ -11,6 +11,7 @@ import {
   OperatorPeer,
   type ConnectionRpcAttachment,
   type ConnectionRpcHandler,
+  type ConnectionAccess,
 } from '@deepseek-ai/dsh-client-connection'
 import { Deque } from '@deepseek-ai/dsh-deque'
 import type { WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
@@ -89,6 +90,8 @@ interface ResolvedBinding {
 }
 
 interface PreparedInvocation {
+  readonly authorize: () => boolean
+  readonly peerLifetime?: AbortSignal
   readonly endpoint: string
   readonly descriptor: InvocationDescriptor
   /** Service view bound to a Context carrying `invocation`, so the method reads it as `this.ctx.invocation`. */
@@ -117,6 +120,7 @@ interface RegisteredRemoteEventSource {
 
 interface RemoteEventClient {
   readonly id: RemoteEventClientId
+  readonly peer: PeerScope
   readonly queue: RemoteEventQueue
   readonly signal: AbortSignal
   readonly deliveries: Map<RemoteEventId, PendingRemoteEvent>
@@ -213,6 +217,8 @@ export class TypertGatewayService extends Service implements TypertGateway {
 
   private srcClaims: ReadonlySet<string> | undefined
   private inProcessOperator: PeerScope | undefined
+  // Hot withdrawal or replacement must not turn a required deployment into an operator carrier.
+  private requiresRequestPolicy = false
   private remoteEvents: RegisteredRemoteEventSource | undefined
   private readonly remoteEventClients = new Map<RemoteEventClientId, RemoteEventClient>()
   private readonly pendingRemoteEvents = new Map<RemoteEventId, PendingRemoteEvent>()
@@ -231,6 +237,7 @@ export class TypertGatewayService extends Service implements TypertGateway {
       this.srcClaims = undefined
     })
     ctx.inject(['connection'], (connectionCtx) => {
+      this.requiresRequestPolicy ||= connectionCtx.connection.requiresRequestPolicy
       connectionCtx.connection.rpc.intercept(
         '/api',
         endpoint => this.claimsEndpoint(endpoint),
@@ -331,6 +338,12 @@ export class TypertGatewayService extends Service implements TypertGateway {
     return this.srcClaims.has(endpoint)
   }
 
+  private allows(peer: PeerScope, access: ConnectionAccess): boolean {
+    const connection = this.ctx.get('connection')
+    if (this.requiresRequestPolicy && connection?.requiresRequestPolicy !== true) return false
+    return connection === undefined ? !this.requiresRequestPolicy : connection.authorize(peer, access)
+  }
+
   private collectSrcClaims(): ReadonlySet<string> {
     const claims = new Set<string>()
     for (const [serviceKey, definition] of Object.entries(this.ctx.reflect.props)) {
@@ -368,7 +381,11 @@ export class TypertGatewayService extends Service implements TypertGateway {
     }
 
     try {
-      return await Reflect.apply(prepared.method, prepared.receiver, prepared.args) as unknown
+      if (!prepared.authorize()) throw resourceUnavailable(prepared.endpoint)
+      const value: unknown = await Reflect.apply(prepared.method, prepared.receiver, prepared.args)
+      if (prepared.peerLifetime?.aborted === true) throw remoteCancelled(prepared.endpoint, prepared.peerLifetime.reason)
+      if (!prepared.authorize()) throw resourceUnavailable(prepared.endpoint)
+      return value
     } catch (error) {
       if (prepared.invocation.signal.aborted) throw remoteCancelled(prepared.endpoint, error)
       throw error
@@ -403,6 +420,7 @@ export class TypertGatewayService extends Service implements TypertGateway {
     }
     let source: unknown
     try {
+      if (!prepared.authorize()) throw resourceUnavailable(prepared.endpoint)
       source = Reflect.apply(prepared.method, prepared.receiver, prepared.args) as unknown
     } catch (error) {
       await prepared.invocation.close()
@@ -418,7 +436,7 @@ export class TypertGatewayService extends Service implements TypertGateway {
         { field: 'result' },
       )
     }
-    return cancellableStream(source, prepared.endpoint, prepared.invocation)
+    return cancellableStream(source, prepared.endpoint, prepared.invocation, prepared.authorize)
   }
 
   private async dispatchRpc(
@@ -431,7 +449,8 @@ export class TypertGatewayService extends Service implements TypertGateway {
       try {
         const result = parseRemoteEventResultPayload(payload)
         const client = this.remoteEventClients.get(result.clientId)
-        if (client === undefined) {
+        if (client === undefined || client.peer !== peer || client.signal.aborted) {
+          if (this.requiresRequestPolicy) throw resourceUnavailable(REMOTE_EVENT_RESULT_ENDPOINT)
           throw new Error('typert gateway: Remote event result identifies no active event stream')
         }
         this.receiveRemoteEventResult(client, result)
@@ -454,7 +473,7 @@ export class TypertGatewayService extends Service implements TypertGateway {
     if (endpoint === REMOTE_EVENT_STREAM_ENDPOINT) {
       // A Gateway-owned stream reads no uplink: releasing it now keeps its items out of the bounded inbox.
       releaseUplink(uplink)
-      return this.openRemoteEvents(payload, signal)
+      return this.openRemoteEvents(payload, signal, peer ?? this.operatorPeer())
     }
     return this.openStream({ ...remoteRequest(endpoint, payload, signal, peer), uplink }, control)
   }
@@ -475,6 +494,7 @@ export class TypertGatewayService extends Service implements TypertGateway {
   private async *openRemoteEvents(
     payload: unknown,
     signal: AbortSignal,
+    peer: PeerScope,
   ): AsyncGenerator<
     RemoteEventEmitFrame | RemoteEventInvocationFrame | RemoteEventCancellationFrame
     | RemoteEventReadyFrame
@@ -492,6 +512,11 @@ export class TypertGatewayService extends Service implements TypertGateway {
         'forwarded Remote event stream requires an empty args object',
       )
     }
+    const peerLifetime = this.ctx.get('connection')?.peerSignal(peer)
+    if (peerLifetime?.aborted === true) throw remoteCancelled(REMOTE_EVENT_STREAM_ENDPOINT, peerLifetime.reason)
+    if (!this.allows(peer, { kind: 'events' })) {
+      throw resourceUnavailable(REMOTE_EVENT_STREAM_ENDPOINT)
+    }
     const registration = this.remoteEvents
     if (registration === undefined) {
       throw new TypertGatewayError(
@@ -500,11 +525,12 @@ export class TypertGatewayService extends Service implements TypertGateway {
         'forwarded Remote event source is unavailable',
       )
     }
-    const lifetime = AbortSignal.any([signal, registration.lifetime.signal])
+    const lifetime = AbortSignal.any([signal, registration.lifetime.signal, ...(peerLifetime === undefined ? [] : [peerLifetime])])
     let clientId = randomUUID() as RemoteEventClientId
     while (this.remoteEventClients.has(clientId)) clientId = randomUUID() as RemoteEventClientId
     const client: RemoteEventClient = {
       id: clientId,
+      peer,
       queue: new RemoteEventQueue(),
       signal: lifetime,
       deliveries: new Map(),
@@ -512,7 +538,8 @@ export class TypertGatewayService extends Service implements TypertGateway {
     this.remoteEventClients.set(clientId, client)
     for (const pending of this.pendingRemoteEvents.values()) this.deliverRemoteEvent(pending, client)
     try {
-      yield { ...REMOTE_EVENT_STREAM_READY, clientId, host: registration.host }
+      const discloseHome = this.allows(peer, { kind: 'metadata', name: 'remote-host-home' })
+      yield { ...REMOTE_EVENT_STREAM_READY, clientId, host: discloseHome ? registration.host : { home: '' } }
       yield* client.queue.iterate(lifetime)
     } finally {
       this.removeRemoteEventClient(client)
@@ -543,7 +570,10 @@ export class TypertGatewayService extends Service implements TypertGateway {
       event: frame.event,
       args: frame.args,
     }
-    for (const client of this.remoteEventClients.values()) client.queue.push(wire)
+    for (const client of this.remoteEventClients.values()) {
+      const allows = () => this.eventAllowed(client, wire.event, wire.args)
+      if (allows()) client.queue.push(wire, allows)
+    }
   }
 
   private startRemoteEvent(source: TypertRemoteEventInvocation): void {
@@ -606,9 +636,19 @@ export class TypertGatewayService extends Service implements TypertGateway {
   }
 
   private deliverRemoteEvent(pending: PendingRemoteEvent, client: RemoteEventClient): void {
+    const allows = () => this.eventAllowed(client, pending.frame.event, [pending.frame.request], pending.frame.agentId,
+      pending.source.context.subject)
+    if (!allows()) return
     pending.deliveries.add(client)
     client.deliveries.set(pending.id, pending)
-    client.queue.push(pending.frame)
+    client.queue.push(pending.frame, allows)
+  }
+
+  private eventAllowed(client: RemoteEventClient, event: string, args: readonly unknown[], agentId?: string, subject?: object): boolean {
+    return !client.signal.aborted && this.allows(client.peer, {
+      kind: 'event', event, args, ...(agentId === undefined ? {} : { agentId }),
+      ...(subject === undefined ? {} : { subject }),
+    })
   }
 
   private receiveRemoteEventResult(
@@ -619,6 +659,10 @@ export class TypertGatewayService extends Service implements TypertGateway {
     // Settlement and Client replacement may race the result request. Results
     // from a completed event or a superseded delivery are idempotent no-ops.
     if (pending === undefined || !pending.deliveries.has(client)) return
+    if (!this.eventAllowed(client, pending.frame.event, [pending.frame.request], pending.frame.agentId, pending.source.context.subject)) {
+      this.removeRemoteEventDelivery(pending, client)
+      throw resourceUnavailable(REMOTE_EVENT_RESULT_ENDPOINT)
+    }
     this.removeRemoteEventDelivery(pending, client)
     if (result.outcome.kind === 'result') {
       this.settleRemoteEvent(pending, {
@@ -664,7 +708,11 @@ export class TypertGatewayService extends Service implements TypertGateway {
       type: 'cancel',
       eventId: pending.id,
     }
-    for (const client of clients) client.queue.push(cancellation)
+    for (const client of clients) {
+      const allows = () => this.eventAllowed(client, pending.frame.event, [pending.frame.request], pending.frame.agentId,
+        pending.source.context.subject)
+      if (allows()) client.queue.push(cancellation, allows)
+    }
   }
 
   private closeRemoteEvents(reason: unknown): void {
@@ -701,6 +749,13 @@ export class TypertGatewayService extends Service implements TypertGateway {
     control: AbortController,
   ): Promise<PreparedInvocation> {
     const endpoint = endpointOf(request.namespace, request.method)
+    const peer = request.peer ?? this.operatorPeer()
+    const peerLifetime = this.ctx.get('connection')?.peerSignal(peer)
+    if (peerLifetime?.aborted === true) throw remoteCancelled(endpoint, peerLifetime.reason)
+    const authorize = () => this.allows(peer, {
+      kind: 'remote', namespace: request.namespace, method: request.method, args: request.args,
+    })
+    if (!authorize()) throw resourceUnavailable(endpoint)
     const descriptor = this.resolveDescriptor(request.namespace, request.method, endpoint)
     assertExactArguments(request.args, descriptor, endpoint)
     const receiverContext = await this.resolveReceiverContext(descriptor, request.args, endpoint)
@@ -715,11 +770,14 @@ export class TypertGatewayService extends Service implements TypertGateway {
     validateBinding(receiver, descriptor.service, descriptor.namespace, endpoint)
     const args = await Promise.all(descriptor.parameters.map(parameter =>
       this.resolveParameter(parameter, request.args, endpoint)))
-    const signal = methodSignal(request, control)
+    const carrierSignal = methodSignal(request, control)
+    const signal = peerLifetime === undefined ? carrierSignal : AbortSignal.any([carrierSignal, peerLifetime])
+    if (peerLifetime !== undefined && signal.aborted) throw remoteCancelled(endpoint, signal.reason)
+    if (!authorize()) throw resourceUnavailable(endpoint)
     const invocation = new GatewayInvocation(
       { namespace: request.namespace, method: request.method, args: request.args },
       descriptor.service,
-      request.peer ?? this.operatorPeer(),
+      peer,
       signal,
       {
         source: request.uplink ?? EMPTY_ASYNC_ITERABLE,
@@ -744,8 +802,10 @@ export class TypertGatewayService extends Service implements TypertGateway {
       )
     }
     return {
+      authorize,
       endpoint,
       descriptor,
+      ...(peerLifetime === undefined ? {} : { peerLifetime }),
       receiver: callReceiver,
       args,
       method: method as (...args: never[]) => unknown,
@@ -1069,13 +1129,13 @@ type RemoteEventWireFrame =
 
 /** Pull-driven queue owned by one connected Client event generation. */
 class RemoteEventQueue {
-  private readonly frames = new Deque<RemoteEventWireFrame>()
+  private readonly frames = new Deque<{ readonly frame: RemoteEventWireFrame; readonly allows: () => boolean }>()
   private waiter: (() => void) | undefined
   private closed = false
 
-  push(frame: RemoteEventWireFrame): void {
+  push(frame: RemoteEventWireFrame, allows: () => boolean): void {
     if (this.closed) return
-    this.frames.pushBack(frame)
+    this.frames.pushBack({ frame, allows })
     this.waiter?.()
   }
 
@@ -1090,7 +1150,10 @@ class RemoteEventQueue {
     signal.addEventListener('abort', abort, { once: true })
     try {
       while (true) {
-        while (this.frames.size > 0) yield this.frames.popFront() as RemoteEventWireFrame
+        while (this.frames.size > 0 && !signal.aborted) {
+          const queued = this.frames.popFront()
+          if (queued !== undefined && queued.allows()) yield queued.frame
+        }
         if (this.closed || signal.aborted) return
         await new Promise<void>((resolve) => { this.waiter = resolve })
         this.waiter = undefined
@@ -1169,6 +1232,7 @@ async function *cancellableStream(
   source: Iterable<unknown> | AsyncIterable<unknown>,
   endpoint: string,
   invocation: GatewayInvocation,
+  authorize: () => boolean,
 ): AsyncGenerator {
   const { signal } = invocation
   const asyncFactory: unknown = Reflect.get(source, Symbol.asyncIterator)
@@ -1183,13 +1247,16 @@ async function *cancellableStream(
   signal.addEventListener('abort', onAbort, { once: true })
   try {
     while (true) {
-      if (signal.aborted) throw streamAbortFailure(endpoint, signal.reason)
+      assertStreamActive(endpoint, signal)
+      if (!authorize()) throw resourceUnavailable(endpoint)
       // Reusing a pending cancellation promise retains every completed race.
       const aborted = new Promise<never>((_resolve, reject) => { rejectAbort = reject })
       // next() can abort and throw synchronously before the race subscribes.
       void aborted.catch(() => undefined)
       const next = await Promise.race([Promise.resolve(iterator.next()), aborted])
       rejectAbort = undefined
+      assertStreamActive(endpoint, signal)
+      if (!authorize()) throw resourceUnavailable(endpoint)
       if (next.done === true) return
       yield next.value
     }
@@ -1201,6 +1268,14 @@ async function *cancellableStream(
     await invocation.close()
     await iterator.return?.()
   }
+}
+
+function assertStreamActive(endpoint: string, signal: AbortSignal): void {
+  if (signal.aborted) throw streamAbortFailure(endpoint, signal.reason)
+}
+
+function resourceUnavailable(endpoint: string): TypertGatewayError {
+  return new TypertGatewayError('gateway/resource-unavailable', endpoint, 'resource unavailable')
 }
 
 /**

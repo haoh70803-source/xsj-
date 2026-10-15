@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/education-storage-sqlite/README.md
+/:
+  en: 47a864a68722ed48
+  zh: 1fae9c9195f8cc26
+/deepseek-ai-dsh-experimental-education-storage-sqlite:
+  en: cf083ef76a64fa89
+  zh: f0e9b3a4c637f851
+/deepseek-ai-dsh-experimental-education-storage-sqlite/summary:
+  en: d8b2c71384d0897d
+  zh: 046593f2f168122b
+/deepseek-ai-dsh-experimental-education-storage-sqlite/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 0923d867a3bc2f6f
+/deepseek-ai-dsh-experimental-education-storage-sqlite/use-this-package:
+  en: e73abf6ce1fa88ea
+  zh: ab7888aac3363aa0
+/deepseek-ai-dsh-experimental-education-storage-sqlite/use-this-package/configuration:
+  en: f55bddaba7c4cc87
+  zh: 2aedfc679c4ec99c
+/deepseek-ai-dsh-experimental-education-storage-sqlite/use-this-package/writes-and-recovery:
+  en: d6bd4d33f0847cb4
+  zh: 535f2ef0339ffa57
+/deepseek-ai-dsh-experimental-education-storage-sqlite/understand-the-implementation:
+  en: bda7164de57bf2b6
+  zh: 3d5b7f710994c085
+/deepseek-ai-dsh-experimental-education-storage-sqlite/further-exploration:
+  en: d596ba983b71883e
+  zh: d9221c784ba81263
+/deepseek-ai-dsh-experimental-education-storage-sqlite/model-experience:
+  en: 1b5dc7f9bce593fc
+  zh: e439a1f0762906fa
+/deepseek-ai-dsh-experimental-education-storage-sqlite/model-experience/kv-cache-effect:
+  en: c4c4626ac31844c8
+  zh: c0b3eb8a65b85793
+/deepseek-ai-dsh-experimental-education-storage-sqlite/known-limitations-and-deferred-work:
+  en: d92c02f3c729163d
+  zh: ee3e777cd709aa12
+/deepseek-ai-dsh-experimental-education-storage-sqlite/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 4545eda38a068f8d

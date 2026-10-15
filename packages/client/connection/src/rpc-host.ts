@@ -5,6 +5,7 @@ import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import type { PeerScope } from '@deepseek-ai/dsh-typert-protocol'
 import {
   RpcId,
+  ConnectionRpcError,
   type ClientRequest,
   type RpcId as RpcIdType,
 } from './rpc.ts'
@@ -26,6 +27,8 @@ import type {
   ConnectionRpcHandler,
   ConnectionRpcResult,
   ConnectionRequestRejection,
+  ConnectionRequestPolicy,
+  ConnectionAccess,
   ConnectionTrustRequest,
   HostConnectionHandle,
   HostConnectionRpc,
@@ -37,7 +40,7 @@ const ENDPOINT_SEGMENT_PATTERN = /^[A-Za-z0-9_$.-]+$/
 
 interface ConnectionRpcInterceptor {
   readonly matches: ConnectionRpcEndpointMatcher
-  readonly fetchHandler: ConnectionFetchHandler
+  readonly handler: ConnectionRpcHandler
 }
 
 interface RegisteredFetchRoute {
@@ -61,10 +64,11 @@ declare module '@deepseek-ai/cordis' {
 
 /** Host Connection service whose channel registrations belong to the caller fiber. */
 export class HostConnectionService extends Service implements HostConnectionHandle {
-  /** The operator Peer every admitted request speaks for. */
+  /** Default operator Peer for deployments without a request policy. */
   readonly operator: PeerScope
   private readonly interceptors = new Map<string, ConnectionRpcInterceptor>()
   private readonly fetchRoutes = new Map<string, RegisteredFetchRoute>()
+  private requestPolicy: { readonly policy: ConnectionRequestPolicy; readonly lifetime: AbortController } | undefined
 
   readonly allowsRemoteAuthorities: boolean
 
@@ -73,11 +77,13 @@ export class HostConnectionService extends Service implements HostConnectionHand
    * @param ctx - owning Connection plugin context.
    * @param trustedHosts - deployment authorities accepted by the Host/Origin fence.
    * @param browserAuth - process token and persistent browser-session owner.
+   * @param requiresRequestPolicy - refuse requests whenever the deployment policy is absent.
    */
   constructor(
     ctx: Context,
     private readonly trustedHosts: readonly string[],
     private readonly browserAuth: BrowserAuth,
+    readonly requiresRequestPolicy = false,
   ) {
     super(ctx, 'connection')
     this.operator = new OperatorPeer(ctx)
@@ -103,56 +109,122 @@ export class HostConnectionService extends Service implements HostConnectionHand
     }
   }
 
-  /** Apply the Host/Origin fence, then browser authentication. */
-  requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection {
-    const carrier = this.ctx.get('webServer')
-    if (!isTrustedApiRequest(request, this.trustedHosts, carrier?.host, carrier?.protocol ?? 'http:')) return 403
-    return this.browserAuth.isAuthenticated(request, carrier?.protocol === 'https:') ? undefined : 401
+  /** Install one reversible deployment policy without replacing the transport. */
+  registerRequestPolicy(policy: ConnectionRequestPolicy): () => Promise<void> {
+    return this.ctx.effect(() => {
+      if (this.requestPolicy !== undefined) throw new Error('connection: request policy is already registered')
+      const lifetime = new AbortController()
+      this.requestPolicy = { policy, lifetime }
+      return () => {
+        this.requestPolicy = undefined
+        lifetime.abort()
+      }
+    }, 'client-connection: request identity policy')
   }
 
-  /** A request that passes the fence and authentication speaks for the operator. */
+  /** Observe identity revocation and withdrawal of the admitting policy. */
+  peerSignal(peer: PeerScope): AbortSignal | undefined {
+    const selected = this.requestPolicy
+    if (selected === undefined && !this.requiresRequestPolicy) return undefined
+    if (!this.accepts(peer) || selected === undefined) {
+      return AbortSignal.abort(new Error('connection: Peer is no longer authenticated'))
+    }
+    const identity = selected.policy.signal?.(peer)
+    return identity === undefined ? selected.lifetime.signal : AbortSignal.any([identity, selected.lifetime.signal])
+  }
+
+  /** Check current identity and resource permission through the selected policy. */
+  authorize(peer: PeerScope, access: ConnectionAccess): boolean {
+    const selected = this.requestPolicy
+    if (selected === undefined) return !this.requiresRequestPolicy
+    return selected.policy.accepts(peer) && (selected.policy.authorize?.(peer, access) ?? true)
+  }
+
+  /** Apply the Host/Origin fence, then the selected authentication policy. */
+  requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection {
+    const admission = this.admit(request)
+    return 'rejection' in admission ? admission.rejection : undefined
+  }
+
+  /** Resolve this request's Peer after the transport trust fence. */
   admit(request: ConnectionTrustRequest): PeerAdmission {
-    const rejection = this.requestRejection(request)
-    return rejection === undefined ? { peer: this.operator } : { rejection }
+    const carrier = this.ctx.get('webServer')
+    if (!isTrustedApiRequest(request, this.trustedHosts, carrier?.host, carrier?.protocol ?? 'http:')) return { rejection: 403 }
+    if (this.requestPolicy !== undefined) return this.requestPolicy.policy.admit(request)
+    if (this.requiresRequestPolicy) return { rejection: 401 }
+    return this.browserAuth.isAuthenticated(request, carrier?.protocol === 'https:')
+      ? { peer: this.operator } : { rejection: 401 }
   }
 
   /**
    * Authenticate an index request; native TLS listeners mint Secure cookies.
    */
   authorizeIndex(request: ConnectionIndexRequest, response: ConnectionIndexResponse): boolean {
+    const carrier = this.ctx.get('webServer')
+    if (this.requestPolicy !== undefined || this.requiresRequestPolicy) {
+      if (!isTrustedApiRequest(request, this.trustedHosts, carrier?.host, carrier?.protocol ?? 'http:')) {
+        response.writeHead(403)
+        response.end('forbidden')
+        return false
+      }
+      if (this.requestPolicy !== undefined) return this.requestPolicy.policy.authorizeIndex(request, response)
+      response.writeHead(401)
+      response.end('unauthorized')
+      return false
+    }
     return this.browserAuth.authorizeIndex(request, response, this.ctx.get('webServer')?.protocol === 'https:')
   }
 
   /** Add this process's launch token to the clean application URL. */
   authenticatedUrl(baseUrl: string): string {
+    if (this.requestPolicy !== undefined || this.requiresRequestPolicy) return baseUrl
     return this.browserAuth.authenticatedUrl(baseUrl)
   }
 
   /**
    * Compose one shared-channel Fetch handler from exact routes and its interceptor.
    * @param channel - shared channel mounted by Connection.
+   * @param peer - authenticated Peer selected by the carrier.
    * @returns Fetch handler that selects one owner or returns 404.
    */
   createSharedFetchHandler(
     channel: '/api',
+    peer: PeerScope = this.operator,
   ): ConnectionFetchHandler {
     return {
       requestBodyMode: ({ method, url }) => {
         const route = this.fetchRoutes.get(url.pathname)
         return route?.methods.has(method) === true ? route.requestBody : 'buffered'
       },
-      fetch: (request) => {
+      fetch: async (request) => {
+        if (!this.accepts(peer)) return new Response('unauthorized', { status: 401 })
         const pathname = new URL(request.url).pathname
         const route = this.fetchRoutes.get(pathname)
-        if (route?.methods.has(request.method) === true) return route.fetch(request)
+        if (route?.methods.has(request.method) === true) {
+          const access: ConnectionAccess = { kind: 'fetch', url: new URL(request.url), method: request.method }
+          if (!this.authorize(peer, access)) return new Response('resource unavailable', { status: 403 })
+          const response = await route.fetch(request, peer)
+          if (this.accepts(peer) && this.authorize(peer, access)) return response
+          await response.body?.cancel()
+          return new Response('resource unavailable', { status: this.accepts(peer) ? 403 : 401 })
+        }
         const endpoint = endpointFromPath(channel, pathname)
         const interceptor = this.interceptors.get(channel)
         if (endpoint === undefined || interceptor === undefined || !interceptor.matches(endpoint)) {
           return Promise.resolve(new Response('not found', { status: 404 }))
         }
-        return interceptor.fetchHandler.fetch(request)
+        return this.boundRpcHandler(channel, interceptor.handler, peer).fetch(request)
       },
     }
+  }
+
+  private boundRpcHandler(channel: string, handler: ConnectionRpcHandler, peer: PeerScope): ConnectionFetchHandler {
+    return rpcFetchHandler(channel, handler, peer, () => this.accepts(peer),
+      (endpoint, payload) => this.authorize(peer, { kind: 'rpc', channel, endpoint, payload }))
+  }
+
+  private accepts(peer: PeerScope): boolean {
+    return this.requestPolicy?.policy.accepts(peer) ?? (!this.requiresRequestPolicy && peer === this.operator)
   }
 
   private registerFetchRoute(
@@ -180,7 +252,6 @@ export class HostConnectionService extends Service implements HostConnectionHand
     handler: ConnectionRpcHandler,
   ): () => Promise<void> {
     assertChannel(channel)
-    const fetchHandler = rpcFetchHandler(channel, handler, this.operator)
     const route: WebRoute = {
       kind: 'prefix',
       path: channel,
@@ -191,11 +262,16 @@ export class HostConnectionService extends Service implements HostConnectionHand
           res.end(admission.rejection === 401 ? 'unauthorized' : 'forbidden')
           return
         }
-        await bridge(req, res, fetchHandler)
+        const peer = admission.peer
+        await bridge(req, res, this.boundRpcHandler(channel, handler, peer))
       },
     }
     return owner.effect(
-      () => owner.webServer.register(route),
+      () => {
+        const server = owner.get('webServer')
+        if (server === undefined) throw new Error('connection: an HTTP RPC channel requires an active webServer')
+        return server.register(route)
+      },
       `client-connection: ${channel} rpc channel`,
     )
   }
@@ -211,7 +287,7 @@ export class HostConnectionService extends Service implements HostConnectionHand
     }
     const interceptor: ConnectionRpcInterceptor = {
       matches,
-      fetchHandler: rpcFetchHandler(channel, handler, this.operator),
+      handler,
     }
     return owner.effect(() => {
       if (this.interceptors.has(channel)) {
@@ -229,6 +305,8 @@ function rpcFetchHandler(
   channel: string,
   handler: ConnectionRpcHandler,
   peer: PeerScope,
+  accepts: () => boolean,
+  authorize: (endpoint: string, payload: unknown) => boolean,
 ): ConnectionFetchHandler {
   return {
     requestBodyMode: () => 'buffered',
@@ -264,9 +342,14 @@ function rpcFetchHandler(
       }
 
       try {
+        if (!accepts()) return new Response('unauthorized', { status: 401 })
+        if (!authorize(endpoint, message.payload)) return new Response('resource unavailable', { status: 403 })
         const result = await handler(endpoint, message.payload, request.signal, peer)
+        if (!accepts()) return new Response('unauthorized', { status: 401 })
+        if (!authorize(endpoint, message.payload)) return new Response('resource unavailable', { status: 403 })
         return fullResponse(message.rpcId, result)
       } catch (error) {
+        if (error instanceof ConnectionRpcError) return errorResponse(message.rpcId, error.failure)
         return new Response(`handler failure: ${String(error)}`, { status: 500 })
       }
     },

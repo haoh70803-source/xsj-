@@ -13,6 +13,8 @@ import {
   RpcId,
   apply,
   inject,
+  OperatorPeer,
+  ConnectionRpcError,
   type ClientRequest,
   type ConnectionConfig,
   type HostConnectionHandle,
@@ -131,6 +133,116 @@ function browserCookie(connection: HostConnectionHandle, authority: string): str
 }
 
 describe('connection node half', () => {
+  it('returns a correlated safe RPC failure from admission without invoking the handler', async () => {
+    const { routes, connection, dispose } = await mounted({ requireRequestPolicy: true })
+    let called = false
+    try {
+      connection.registerRequestPolicy({ admit: () => ({ peer: connection.operator }), accepts: () => true,
+        authorizeIndex: () => false, authorize: () => {
+          throw new ConnectionRpcError(Object.assign(new Error('check request fields'), {
+            code: 'fixture/INPUT_INVALID', details: {}, privateDiagnostic: 'must-not-leak',
+          }))
+        } })
+      connection.rpc.intercept('/api', () => true, async () => { called = true; return { ok: true, value: 'private' } })
+      const reply = fakeResponse()
+      const route = routes.find(candidate => candidate.path === '/api')
+      if (route === undefined) throw new Error('missing API route')
+      await route.handler(fakePost({ host: 'localhost' }, '/api/who', {
+        type: 'client-request', rpcId: 'admission-1', method: 'who', payload: { owner: 'untrusted' },
+      }), reply.response)
+      expect(reply.state.status).toBe(200)
+      expect(JSON.parse(String(reply.state.body))).toMatchObject({ rpcId: 'admission-1',
+        result: { ok: false, error: { code: 'fixture/INPUT_INVALID', message: 'check request fields', details: {} } } })
+      expect(called).toBe(false)
+      expect(String(reply.state.body)).not.toContain('must-not-leak')
+    } finally { await dispose() }
+  })
+
+  it('binds dedicated RPC, shared RPC and Fetch to the admitted request Peer', async () => {
+    const { ctx, routes, connection, dispose } = await mounted({ requireRequestPolicy: true })
+    const a = new OperatorPeer(ctx)
+    const b = new OperatorPeer(ctx)
+    const active = new Set<PeerScope>([a, b])
+    try {
+      const remove = connection.registerRequestPolicy({
+        admit: (request) => {
+          const cookie = request.headers instanceof Headers ? request.headers.get('cookie') : request.headers.cookie
+          return { peer: cookie === 'employee=a' ? a : b }
+        },
+        accepts: peer => active.has(peer),
+        authorizeIndex: () => false,
+      })
+      expect(() => connection.registerRequestPolicy({ admit: () => ({ peer: a }), accepts: () => true,
+        authorizeIndex: () => false })).toThrow('already registered')
+      connection.rpc.handle('/employee', async (_endpoint, payload, _signal, peer) => ({
+        ok: true, value: { peer: peer.id, payload },
+      }))
+      connection.rpc.intercept('/api', () => true, async (_endpoint, payload, _signal, peer) => ({
+        ok: true, value: { peer: peer.id, payload },
+      }))
+      connection.fetch.register({ path: '/api/employee.download', methods: ['GET'], requestBody: 'buffered',
+        fetch: async (_request, peer) => Response.json({ peer: peer.id }),
+      })
+      for (const path of ['/employee/who', '/api/who']) {
+        const route = routes.find(candidate => path.startsWith(`${candidate.path}/`))
+        if (route === undefined) throw new Error('missing physical RPC route')
+        await Promise.all([a, b].map(async (peer, index) => {
+          const reply = fakeResponse()
+          await route.handler(fakePost({ host: 'localhost', cookie: `employee=${index === 0 ? 'a' : 'b'}` }, path,
+            { type: 'client-request', rpcId: `request-${index}`, method: 'who', payload: { owner: 'untrusted' } }), reply.response)
+          expect(reply.state.status).toBe(200)
+          expect(JSON.parse(String(reply.state.body))).toMatchObject({
+            result: { value: { peer: peer.id, payload: { owner: 'untrusted' } } },
+          })
+        }))
+      }
+      const download = fakeResponse()
+      const sharedRoute = routes.find(candidate => candidate.path === '/api')
+      if (sharedRoute === undefined) throw new Error('missing API route')
+      await sharedRoute.handler(fakeRequest({ host: 'localhost', cookie: 'employee=a' }, '/api/employee.download'), download.response)
+      expect(JSON.parse(String(download.state.body))).toEqual({ peer: a.id })
+      expect(connection.admit(fakeRequest({ host: 'evil.example', cookie: 'employee=a' }))).toEqual({ rejection: 403 })
+      const bound = connection.createSharedFetchHandler('/api', a)
+      active.delete(a)
+      expect((await bound.fetch(new Request('http://localhost/api/employee.download'))).status).toBe(401)
+      await remove()
+      expect(connection.admit(fakeRequest({ host: 'localhost' }))).toEqual({ rejection: 401 })
+      expect((await connection.createSharedFetchHandler('/api', b).fetch(new Request('http://localhost/api/employee.download'))).status)
+        .toBe(401)
+    } finally { await a.dispose(); await b.dispose(); await dispose() }
+  })
+
+  it('refuses required-policy index and shared dispatch before policy installation', async () => {
+    const { connection, dispose } = await mounted({ requireRequestPolicy: true })
+    try {
+      expect(connection.authenticatedUrl('http://localhost/')).toBe('http://localhost/')
+      const reply = fakeResponse()
+      expect(connection.authorizeIndex(fakeRequest({ host: 'localhost' }), reply.response)).toBe(false)
+      expect(reply.state.status).toBe(401)
+      const shared = connection.createSharedFetchHandler('/api')
+      expect((await shared.fetch(new Request('http://localhost/api/private'))).status).toBe(401)
+    } finally { await dispose() }
+  })
+
+  it('discards a completed RPC result when its Peer was revoked during the call', async () => {
+    const { connection, dispose } = await mounted({ requireRequestPolicy: true })
+    let active = true
+    try {
+      const peer = connection.operator
+      connection.registerRequestPolicy({ admit: () => ({ peer }), accepts: () => active, authorizeIndex: () => false })
+      connection.rpc.intercept('/api', () => true, async () => {
+        active = false
+        return { ok: true, value: 'private-response' }
+      })
+      const response = await connection.createSharedFetchHandler('/api', peer).fetch(new Request('http://localhost/api/private', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'client-request', rpcId: 'late', method: 'private', payload: {} }),
+      }))
+      expect(response.status).toBe(401)
+      expect(await response.text()).not.toContain('private-response')
+    } finally { await dispose() }
+  })
+
   it('runs request admission after authentication and removes it with its owning fiber', async () => {
     const { ctx, routes, connection, dispose } = await mounted()
     let admitted = 0

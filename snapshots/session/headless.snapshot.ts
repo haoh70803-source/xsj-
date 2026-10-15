@@ -292,7 +292,7 @@ async function writeHeaderSidecars(
     if (schemaOwner === scenario.name) {
       await writeFile(
         join(scenario.dir, 'tool-schemas.expected.json'),
-        formatToolSchemasSnapshot(schemas[0] as unknown[], schemas.slice(1)),
+        formatToolSchemasSnapshot(schemas[0] ?? [], schemas.slice(1)),
       )
     }
   }

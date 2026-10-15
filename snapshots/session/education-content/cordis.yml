@@ -1,0 +1,5 @@
+# The runtime patch owns the content policy in both live and replay runs.
+- id: llm-deepseek
+  config:
+    maxTokens: 4096
+    thinking: disabled

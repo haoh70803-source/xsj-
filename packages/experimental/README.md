@@ -36,6 +36,12 @@ Promotion requires a named product role, documented public behavior and limitati
 
 | Package | Role | ctx key |
 |---|---|---|
+| [`education-platform`](education-platform/README.md) | Private education DTOs and storage-dependent Host service | `ctx.educationPlatform` |
+| [`education-controller`](education-controller/README.md) | Authorized project/version RPC, commit observation and plain-text export | `ctx.educationController` |
+| [`education-shell`](education-shell/README.md) | Native employee project editor, versions, export and identity cleanup | `main`, `sidebar.panellist` |
+| [`education-identity`](education-identity/README.md) | Durable employee login, current identity and controlled HTTP cookies | `ctx.educationIdentity` |
+| [`education-storage-sqlite`](education-storage-sqlite/README.md) | Atomic private drafts, immutable versions and request receipts | `ctx.educationRepository` |
+| [`education-bundle`](education-bundle/README.md) | Explicit isolated education storage development layer | — |
 | [`tool-session-query`](tool-session-query/README.md) | Workspace-authorized model session search, trace, and event reads | — |
 | [`session-search`](session-search/README.md) | Optional experimental global session search tools | — |
 | [`ralph-bundle`](ralph-bundle/README.md) | Optional repeated delegation with an isolated workflow engine | — |

@@ -17,6 +17,12 @@
     "website"
   ],
   "scripts": {
+    "start:education:native": "node scripts/education-native.mjs",
+    "setup:education:native": "node scripts/education-native.mjs init",
+    "add-user:education": "node scripts/education-native.mjs add-user",
+    "build:education": "tsc -b packages/experimental/education-workbench apps/web/education && tsdown --config packages/experimental/education-workbench/tsdown.config.ts && pnpm --filter @deepseek-ai/dsh-web-frontend exec vite build --config education/vite.config.ts",
+    "start:education": "node scripts/education-native.mjs",
+    "start:education:prototype": "node --import ./scripts/education-environment.mjs apps/cli/lib/bin.js --profile headless --patch packages/experimental/education-workbench/workbench.patch.yml",
     "prepare:primary-runtime": "tsx scripts/primary-runtime/prepare.ts",
     "build": "tsx scripts/build.ts",
     "build:bench": "npm run build:native-system && npm run build:lib && tsdown --config-loader native --config benchmarks/tsdown.config.ts",
@@ -214,6 +220,7 @@
     "verify-product-use": "tsx scripts/verify-product-use.ts"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-experimental-education-bundle": "workspace:*",
     "@deepseek-ai/dsh-hooks-claude-code": "workspace:*",
     "@deepseek-ai/dsh-hooks-codex": "workspace:*",
     "@deepseek-ai/dsh-tool-ralph": "workspace:*",

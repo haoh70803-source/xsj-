@@ -221,6 +221,12 @@
     "scripts/client-bundle-purity.spec.ts"
   ],
   "references": [
+    { "path": "./packages/experimental/education-workbench" },
+    { "path": "./packages/experimental/education-platform" },
+    { "path": "./packages/experimental/education-controller" },
+    { "path": "./packages/experimental/education-identity" },
+    { "path": "./packages/experimental/education-storage-sqlite" },
+    { "path": "./packages/experimental/education-bundle" },
     { "path": "./packages/experimental/client-ui-cot-translation/tsconfig.host.json" },
     { "path": "./packages/experimental/cot-translation-bundle" },
     { "path": "./packages/experimental/session-search" },

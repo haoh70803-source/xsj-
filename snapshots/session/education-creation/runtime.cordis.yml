@@ -1,0 +1,54 @@
+- id: session-title-llm
+  disabled: true
+- id: hooks-claude-code
+  disabled: true
+- id: hooks-codex
+  disabled: true
+- id: working-directory
+  disabled: true
+- id: tool-working-directory
+  disabled: true
+- id: agent-instructions
+  disabled: true
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-fs-search
+  disabled: true
+- id: tool-skill
+  disabled: true
+- id: subagent
+  disabled: true
+- id: subagent-spawn-in-process
+  disabled: true
+- id: subagent-fork-in-process
+  disabled: true
+- id: tool-subagent-control
+  disabled: true
+- id: tool-subagent-list-agents
+  disabled: true
+- id: tool-subagent
+  disabled: true
+- id: tool-subagent-fork
+  disabled: true
+- id: workflow-ptc
+  disabled: true
+- id: tool-workflow
+  disabled: true
+- id: tools
+  config:
+    mode: native
+- id: system-prompt
+  config:
+    personaPrefix: ''
+    includeRuntimeContext: false
+- id: llm-deepseek
+  config:
+    maxTokens: 1024
+    thinking: disabled
+- insert:
+    - id: education-creation-policy
+      name: '../../../packages/experimental/education-controller/tests/snapshot-policy.ts'

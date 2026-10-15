@@ -1,0 +1,8 @@
+version: 1
+scenario: education-content
+profile: headless
+composition: education-content
+recording: authored
+header:
+  class: education-content
+  pin: true

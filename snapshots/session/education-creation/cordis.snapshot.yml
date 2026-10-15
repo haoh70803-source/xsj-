@@ -1,0 +1,19 @@
+- id: llm-deepseek
+  disabled: true
+- id: llm-deepseek-account
+  disabled: true
+- insert:
+    - id: llm-replay
+      name: '@deepseek-ai/dsh-llm-replay'
+      config:
+        providers:
+          - id: deepseek-account
+            name: DeepSeek Account
+            models:
+              - id: deepseek-flash
+                contextWindow: 1000000
+                systemPromptUpdate: in-history
+                toolUpdate: in-history
+                defaultMaxTokens: 1024
+                reasoningEfforts: [off]
+                defaultReasoningEffort: off

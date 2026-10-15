@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/education-identity/README.md
+/:
+  en: af258d8fba9632a0
+  zh: ab6d9279023184c6
+/deepseek-ai-dsh-experimental-education-identity:
+  en: 9834a295c4406cc5
+  zh: 366907c055decc58
+/deepseek-ai-dsh-experimental-education-identity/summary:
+  en: b2d74ae531e7f712
+  zh: 7997f5e1fd78a581
+/deepseek-ai-dsh-experimental-education-identity/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 0923d867a3bc2f6f
+/deepseek-ai-dsh-experimental-education-identity/use-this-package:
+  en: 58de6a9a328c6da3
+  zh: 9bf2e11c7f777ab2
+/deepseek-ai-dsh-experimental-education-identity/use-this-package/configuration:
+  en: 48d64ef354b7cd6e
+  zh: 9f052bad86c0249a
+/deepseek-ai-dsh-experimental-education-identity/use-this-package/http-and-lifecycle:
+  en: adc2128d3217b098
+  zh: ced2a34cff8c642c
+/deepseek-ai-dsh-experimental-education-identity/understand-the-implementation:
+  en: 355b53d37a26475a
+  zh: 8a1653dfc41d93d8
+/deepseek-ai-dsh-experimental-education-identity/further-exploration:
+  en: 5a5722c02fd9bcaf
+  zh: f7a427be84418331
+/deepseek-ai-dsh-experimental-education-identity/model-experience:
+  en: 2650b2c0d7295638
+  zh: 6e02140e431f3280
+/deepseek-ai-dsh-experimental-education-identity/model-experience/kv-cache-effect:
+  en: c651584b814fdf99
+  zh: 657f09eb9a93ef49
+/deepseek-ai-dsh-experimental-education-identity/known-limitations-and-deferred-work:
+  en: 20874c6d8391e832
+  zh: e4151af87bb1397b
+/deepseek-ai-dsh-experimental-education-identity/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 4545eda38a068f8d

@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/education-bundle/README.md
+/:
+  en: 336507651c8fe271
+  zh: cba16c97c0d88613
+/deepseek-ai-dsh-experimental-education-bundle:
+  en: d72518b22b3f22bd
+  zh: 344f8444372fa2f4
+/deepseek-ai-dsh-experimental-education-bundle/summary:
+  en: b39230ad54ea4600
+  zh: 59350fc6994751e9
+/deepseek-ai-dsh-experimental-education-bundle/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 0923d867a3bc2f6f
+/deepseek-ai-dsh-experimental-education-bundle/use-this-package:
+  en: bbff250eba0f1b89
+  zh: bbff250eba0f1b89
+/deepseek-ai-dsh-experimental-education-bundle/use-this-package/enable-in-development:
+  en: af1468a07996c680
+  zh: e7d1a9ee66ff0234
+/deepseek-ai-dsh-experimental-education-bundle/use-this-package/what-you-get:
+  en: ea20780f57d0922a
+  zh: 918b04991cb9c48f
+/deepseek-ai-dsh-experimental-education-bundle/understand-the-implementation:
+  en: 51e6c54a2d1f913b
+  zh: f05d79186e0f1a26
+/deepseek-ai-dsh-experimental-education-bundle/further-exploration:
+  en: 59d15e8eadab37b3
+  zh: 64805d49f88baa68
+/deepseek-ai-dsh-experimental-education-bundle/model-experience:
+  en: 4f45d28ea3ab446d
+  zh: 1ffe3f9e0444cf62
+/deepseek-ai-dsh-experimental-education-bundle/model-experience/kv-cache-effect:
+  en: e8b6054b5d64666e
+  zh: 7eb44e80969691c9
+/deepseek-ai-dsh-experimental-education-bundle/known-limitations-and-deferred-work:
+  en: 3f46b0cad0b712b6
+  zh: eb0cd3dec33574c9
+/deepseek-ai-dsh-experimental-education-bundle/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 4545eda38a068f8d

@@ -1,0 +1,49 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/education-controller/README.md
+/:
+  en: 293f27fee88d9109
+  zh: 8710fa0bc595ce41
+/deepseek-ai-dsh-experimental-education-controller:
+  en: db80951062aedf35
+  zh: 14ee6c08d5023a02
+/deepseek-ai-dsh-experimental-education-controller/summary:
+  en: b57e3aa1d8c7ea25
+  zh: 1e3cd3d5174b32aa
+/deepseek-ai-dsh-experimental-education-controller/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 0923d867a3bc2f6f
+/deepseek-ai-dsh-experimental-education-controller/use-this-package:
+  en: 18f54132c7ee6743
+  zh: 0678d9600cf8485b
+/deepseek-ai-dsh-experimental-education-controller/understand-the-implementation:
+  en: 2399ad7707cfa74e
+  zh: 42efdbcac3d25a01
+/deepseek-ai-dsh-experimental-education-controller/further-exploration:
+  en: 5877068d7349604f
+  zh: bb7be55569987290
+/deepseek-ai-dsh-experimental-education-controller/model-experience:
+  en: 215e7ba838619b7b
+  zh: 215e7ba838619b7b
+/deepseek-ai-dsh-experimental-education-controller/model-experience/native-content-creation:
+  en: d49e69c69cd25a63
+  zh: d49e69c69cd25a63
+/deepseek-ai-dsh-experimental-education-controller/model-experience/native-content-creation/what-the-model-sees:
+  en: fe87a9414340fdb3
+  zh: 786b6801f88c4f1a
+/deepseek-ai-dsh-experimental-education-controller/model-experience/native-content-creation/what-the-model-sees/content-rules:
+  en: 655d327d0ba927cc
+  zh: 655d327d0ba927cc
+/deepseek-ai-dsh-experimental-education-controller/model-experience/native-content-creation/token-effect:
+  en: c240b56afd7e25f4
+  zh: b6546cdcbdf36da8
+/deepseek-ai-dsh-experimental-education-controller/model-experience/native-content-creation/kv-cache-effect:
+  en: d708523477aa76ca
+  zh: de6b7bef80b911cc
+/deepseek-ai-dsh-experimental-education-controller/known-limitations-and-deferred-work:
+  en: f6e3936178b8bc3c
+  zh: 2a58dd72deb50158
+/deepseek-ai-dsh-experimental-education-controller/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 4545eda38a068f8d

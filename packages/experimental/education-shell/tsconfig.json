@@ -1,0 +1,55 @@
+{
+  "extends": "../../../tsconfig.base.client.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    { "path": "../../../vendor/schemastery" },
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../api/gateway/tsconfig.client.json"
+    },
+    {
+      "path": "../../client/locale/tsconfig.client.json"
+    },
+    {
+      "path": "../../client/ui-renderer"
+    },
+    {
+      "path": "../../client/ui-layout"
+    },
+    {
+      "path": "../../client/ui-sidebar"
+    },
+    {
+      "path": "../../client/ui-primitives"
+    },
+    {
+      "path": "../../client/ui-slots"
+    },
+    {
+      "path": "../../client/connection/tsconfig.client.json"
+    },
+    {
+      "path": "../education-platform"
+    },
+    {
+      "path": "../../util/brand"
+    },
+    {
+      "path": "../../typert/protocol"
+    },
+    {
+      "path": "../education-controller"
+    },
+    {
+      "path": "../../util/crypto"
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+# Launch using the headless profile's base engine. Its one-shot application is
+# replaced by the business HTTP plugin; no coding Web/RPC surface is mounted.
+- id: headless-startup
+  disabled: true
+- id: headless-runner
+  disabled: true
+- id: session-title-llm
+  disabled: true
+# Content agents receive no workspace instructions or execution directory.
+# Their dependent coding tools and child-agent runners are omitted together.
+- id: working-directory
+  disabled: true
+- id: tool-working-directory
+  disabled: true
+- id: agent-instructions
+  disabled: true
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-fs-search
+  disabled: true
+- id: tool-skill
+  disabled: true
+- id: subagent
+  disabled: true
+- id: subagent-spawn-in-process
+  disabled: true
+- id: subagent-fork-in-process
+  disabled: true
+- id: tool-subagent-control
+  disabled: true
+- id: tool-subagent-list-agents
+  disabled: true
+- id: tool-subagent
+  disabled: true
+- id: tool-subagent-fork
+  disabled: true
+- id: workflow-ptc
+  disabled: true
+- id: tool-workflow
+  disabled: true
+- id: tools
+  config:
+    mode: native
+- id: system-prompt
+  config:
+    personaPrefix: ''
+    includeRuntimeContext: false
+- insert:
+    - id: education-webserver
+      name: '@deepseek-ai/dsh-host-webserver'
+      config:
+        host: !!js process.env.EDUCATION_BIND_HOST ?? '127.0.0.1'
+        port: !!js Number(process.env.EDUCATION_PORT ?? 3190)
+    - id: education-workbench
+      name: ./lib/index.js
+      config:
+        dataDir: !!js process.env.EDUCATION_DATA_DIR ?? '.cache/education-workbench'
+        frontendDir: !!js process.env.EDUCATION_FRONTEND_DIR ?? 'apps/web/education/dist'
+        publicOrigin: !!js process.env.EDUCATION_PUBLIC_ORIGIN ?? 'http://127.0.0.1:3190'
+        invitationCode: !!js process.env.EDUCATION_INVITATION_CODE
+        provider: !!js process.env.EDUCATION_MODEL_PROVIDER ?? 'deepseek-official'
+        model: !!js process.env.EDUCATION_MODEL ?? 'deepseek-flash'

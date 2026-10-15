@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/education-workbench/README.md
+/:
+  en: dc8ba36624303022
+  zh: 7747e14e68e9f277
+/deepseek-ai-dsh-experimental-education-workbench:
+  en: a59da84fcf6601f8
+  zh: d54a1da71b055535
+/deepseek-ai-dsh-experimental-education-workbench/summary:
+  en: 0e60021759627020
+  zh: 119f765e0779c7b3
+/deepseek-ai-dsh-experimental-education-workbench/use-this-package:
+  en: 9f6a9db2ea845d82
+  zh: cdd317747705d8bc
+/deepseek-ai-dsh-experimental-education-workbench/understand-the-implementation:
+  en: 448a7807e8a078d8
+  zh: 11924c3313aa9315
+/deepseek-ai-dsh-experimental-education-workbench/model-experience:
+  en: 215e7ba838619b7b
+  zh: 215e7ba838619b7b
+/deepseek-ai-dsh-experimental-education-workbench/model-experience/native-content-creation:
+  en: d49e69c69cd25a63
+  zh: d49e69c69cd25a63
+/deepseek-ai-dsh-experimental-education-workbench/model-experience/native-content-creation/what-the-model-sees:
+  en: c4d3886c09160a02
+  zh: a19a1dabd25bf8e9
+/deepseek-ai-dsh-experimental-education-workbench/model-experience/native-content-creation/what-the-model-sees/content-rules:
+  en: 655d327d0ba927cc
+  zh: 655d327d0ba927cc
+/deepseek-ai-dsh-experimental-education-workbench/model-experience/native-content-creation/token-effect:
+  en: a71c9a47f5d3815c
+  zh: 70b91fcc60aeba12
+/deepseek-ai-dsh-experimental-education-workbench/model-experience/native-content-creation/kv-cache-effect:
+  en: 226a16066e16590b
+  zh: e543c1f66cf353f8
+/deepseek-ai-dsh-experimental-education-workbench/known-limitations-and-deferred-work:
+  en: 946722a31e827df1
+  zh: d845d153d4a40c4a
+/deepseek-ai-dsh-experimental-education-workbench/known-limitations-and-deferred-work/dev-note:
+  en: bca1428a4ebdbc1f
+  zh: 5b9a8f6d2f5f9626

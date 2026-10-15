@@ -114,6 +114,7 @@ export interface TypertGatewayWireStream {
 
 /** Stable infrastructure and boundary failures emitted before or after business execution. */
 export type TypertGatewayErrorCode =
+  | 'gateway/resource-unavailable'
   | 'gateway/ambiguous-endpoint'
   | 'gateway/arguments-invalid'
   | 'gateway/binding-invalid'

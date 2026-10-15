@@ -1,0 +1,30 @@
+# Storage and opt-in employee services. Controller requires a selected
+# Connection with required policy and employee identity adaptation enabled.
+- insert:
+    - id: education-storage-sqlite
+      name: '@deepseek-ai/dsh-experimental-education-storage-sqlite'
+      config:
+        path: !!js process.env.EDUCATION_DATABASE_PATH
+    - id: education-platform
+      name: '@deepseek-ai/dsh-experimental-education-platform'
+    - id: education-identity-layer
+      name: cordis:group
+      group: true
+      disabled: !!js process.env.EDUCATION_IDENTITY_ENABLED !== 'true'
+      config:
+        - id: education-auth-webserver
+          name: '@deepseek-ai/dsh-host-webserver'
+          config:
+            host: '127.0.0.1'
+            port: !!js Number(process.env.EDUCATION_IDENTITY_PORT ?? 3191)
+        - id: education-identity
+          name: '@deepseek-ai/dsh-experimental-education-identity'
+          config:
+            organizationId: !!js process.env.EDUCATION_ORGANIZATION_ID
+            publicOrigin: !!js process.env.EDUCATION_IDENTITY_PUBLIC_ORIGIN
+        - id: education-controller
+          name: '@deepseek-ai/dsh-experimental-education-controller'
+          disabled: !!js process.env.EDUCATION_CONTROLLER_ENABLED !== 'true'
+        - id: education-shell
+          name: '@deepseek-ai/dsh-experimental-education-shell'
+          disabled: !!js process.env.EDUCATION_CLIENT_ENABLED !== 'true'

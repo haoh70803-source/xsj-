@@ -148,6 +148,14 @@ class FakeConnectionService extends Service {
   requestRejection(): undefined {
     return undefined
   }
+
+  peerSignal(): undefined {
+    return undefined
+  }
+
+  authorize(): boolean {
+    return true
+  }
 }
 
 function fakeHttpServer(routes: WebRoute[]): Pick<WebServer, 'register' | 'tapIndex' | 'port'> {
@@ -1229,7 +1237,7 @@ describe('TypertGatewayService', () => {
       })
     })(), { home: '/home/fixture' })
     const carrier = new AbortController()
-    const events = rawGatewayEventHarness(ctx).openRemoteEvents({ args: {} }, carrier.signal)
+    const events = rawGatewayEventHarness(ctx).openRemoteEvents({ args: {} }, carrier.signal, connection.operator)
     const opening = await events.next()
     expect(opening).toMatchObject({
       done: false,
@@ -1445,7 +1453,7 @@ function rawConnection(ctx: Context): FakeConnectionService {
 }
 
 interface GatewayEventHarness {
-  openRemoteEvents(payload: unknown, signal: AbortSignal): AsyncGenerator
+  openRemoteEvents(payload: unknown, signal: AbortSignal, peer: PeerScope): AsyncGenerator
 }
 
 function rawGatewayEventHarness(ctx: Context): GatewayEventHarness {

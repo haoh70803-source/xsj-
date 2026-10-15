@@ -28,6 +28,17 @@
     // not declaration path aliases, keep each package/vendor source compiled
     // under its own tsconfig boundary.
     "paths": {
+      "@deepseek-ai/dsh-experimental-education-shell": ["./packages/experimental/education-shell/src/index.ts"],
+      "@deepseek-ai/dsh-experimental-education-shell/client": ["./packages/experimental/education-shell/src/client/index.ts"],
+      "@deepseek-ai/dsh-experimental-education-platform": ["./packages/experimental/education-platform/src/index.ts"],
+      "@deepseek-ai/dsh-experimental-education-controller": ["./packages/experimental/education-controller/src/index.ts"],
+      "@deepseek-ai/dsh-experimental-education-controller/types": ["./packages/experimental/education-controller/src/types.ts"],
+      "@deepseek-ai/dsh-experimental-education-identity": ["./packages/experimental/education-identity/src/index.ts"],
+      "@deepseek-ai/dsh-experimental-education-platform/types": ["./packages/experimental/education-platform/src/types.ts"],
+      "@deepseek-ai/dsh-experimental-education-storage-sqlite": ["./packages/experimental/education-storage-sqlite/src/index.ts"],
+      "@deepseek-ai/dsh-experimental-education-bundle": ["./packages/experimental/education-bundle/src/index.ts"],
+      "@deepseek-ai/dsh-experimental-education-workbench": ["./packages/experimental/education-workbench/src/index.ts"],
+      "@deepseek-ai/dsh-experimental-education-workbench/types": ["./packages/experimental/education-workbench/src/types.ts"],
       "@deepseek-ai/dsh-experimental-session-search": ["./packages/experimental/session-search/src/index.ts"],
       "@deepseek-ai/dsh-experimental-ralph-bundle": ["./packages/experimental/ralph-bundle/src/index.ts"],
       "@deepseek-ai/dsh-experimental-terminal-bundle": ["./packages/experimental/terminal-bundle/src/index.ts"],

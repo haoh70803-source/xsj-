@@ -1,0 +1,5 @@
+# Live recording uses the selected native account provider; replay never resolves its credential.
+- id: llm-deepseek-account
+  config:
+    maxTokens: 1024
+    thinking: disabled

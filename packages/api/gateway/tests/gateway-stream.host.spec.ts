@@ -4,7 +4,7 @@ import { queryObjects } from 'node:v8'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import WebSocket, { type RawData } from 'ws'
 import { Context, symbols } from '@deepseek-ai/cordis'
-import { apply as applyConnection, inject as connectionInject } from '@deepseek-ai/dsh-client-connection'
+import { apply as applyConnection, inject as connectionInject, OperatorPeer, type ConnectionConfig } from '@deepseek-ai/dsh-client-connection'
 import WebServer from '@deepseek-ai/dsh-host-webserver'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type { AppReady } from '@deepseek-ai/dsh-cmdline'
@@ -59,6 +59,7 @@ class FeedService extends TypertRemoteService {
   leftover: AsyncIterator<string> | undefined
   source: Iterable<string> = []
   returns = 0
+  readonly pendingUnary = Promise.withResolvers<string>()
 
   constructor(ctx: Context) {
     super(ctx, 'feed')
@@ -216,6 +217,11 @@ class FeedService extends TypertRemoteService {
     return label
   }
 
+  @Remote
+  async late(): Promise<string> {
+    return this.pendingUnary.promise
+  }
+
   /** Reads the uplink inside a unary call: items arrive only while the method runs. */
   async unaryUplink(): Promise<string[]> {
     const items: string[] = []
@@ -339,6 +345,181 @@ afterEach(async () => {
 })
 
 describe('Typert Remote streams', () => {
+  it('keeps required authorization after Connection is unloaded', async () => {
+    const { ctx, connectionFiber } = await setup(true, {}, undefined, { requireRequestPolicy: true })
+    const peer = new OperatorPeer(ctx)
+    ctx.connection.registerRequestPolicy({ admit: () => ({ peer }), accepts: () => true, authorizeIndex: () => false })
+    await expect(ctx.typertGateway.invoke({ namespace: 'feed', method: 'unary', args: { label: 'authorized' }, peer }))
+      .resolves.toBe('authorized')
+    if (connectionFiber === undefined) throw new Error('fixture Connection did not activate')
+    await connectionFiber.dispose()
+    await expect(ctx.typertGateway.invoke({ namespace: 'feed', method: 'unary', args: { label: 'private' }, peer }))
+      .rejects.toMatchObject({ code: 'gateway/resource-unavailable' })
+    await ctx.plugin({ inject: [...connectionInject], apply: applyConnection })
+    await expect(ctx.typertGateway.invoke({ namespace: 'feed', method: 'unary', args: { label: 'still-private' } }))
+      .rejects.toMatchObject({ code: 'gateway/resource-unavailable' })
+  })
+
+  it('rechecks queued event authorization without relying on login revocation', async () => {
+    const { ctx } = await setup(true)
+    const peer = new OperatorPeer(ctx)
+    let allowed = true
+    ctx.connection.registerRequestPolicy({ admit: () => ({ peer }), accepts: () => true, authorizeIndex: () => false,
+      authorize: (_peer, access) => access.kind !== 'event' || access.event !== 'fixture/private' || allowed })
+    const source = new RemoteEventSourceProbe()
+    const unregister = ctx.typertGateway.registerRemoteEvents(source.source, REMOTE_HOST)
+    const stream = await ctx.typertGateway.wireStream.open('$events', { args: {} }, toAsync([]), peer, new AbortController().signal)
+    const iterator = stream[Symbol.asyncIterator]()
+    await iterator.next()
+    source.push({ event: 'fixture/private', args: ['first-private-marker'] })
+    source.push({ event: 'fixture/private', args: ['queued-private-marker'] })
+    expect(await iterator.next()).toMatchObject({ value: { args: ['first-private-marker'] } })
+    await new Promise<void>((resolve) => { setImmediate(resolve) })
+    allowed = false
+    source.push({ event: 'fixture/safe', args: ['authorized-marker'] })
+    expect(await iterator.next()).toMatchObject({ value: { args: ['authorized-marker'] } })
+    await iterator.return?.()
+    await unregister()
+  })
+
+  it('rejects a previously delivered event reply after resource permission changes and reauthorizes reconnect', async () => {
+    const { ctx } = await setup(true)
+    const peer = new OperatorPeer(ctx)
+    let allowed = true
+    ctx.connection.registerRequestPolicy({ admit: () => ({ peer }), accepts: () => true, authorizeIndex: () => false,
+      authorize: (_peer, access) => access.kind !== 'event' || allowed })
+    const source = new RemoteEventSourceProbe()
+    const unregister = ctx.typertGateway.registerRemoteEvents(source.source, REMOTE_HOST)
+    const client = await openEventClient(ctx, 'initial-resource-owner', 'employee=a')
+    const pending = pendingInvocation(ctx.extend())
+    source.push(pending.dispatch)
+    await vi.waitFor(() => { expect(deliveredInvocation(client)).toBeDefined() })
+    const frame = deliveredInvocation(client)
+    if (frame === undefined) throw new Error('fixture event was not delivered')
+    allowed = false
+    await expect(sendEventResult(client, frame, { kind: 'result', value: 'stale-owner-result' })).rejects.toThrow('resource unavailable')
+    expect(pending.resolve).not.toHaveBeenCalled()
+    allowed = true
+    const replacement = await openEventClient(ctx, 'reconnected-resource-owner', 'employee=a')
+    await vi.waitFor(() => { expect(deliveredInvocation(replacement)).toBeDefined() })
+    const retried = deliveredInvocation(replacement)
+    if (retried === undefined) throw new Error('reconnect event was not delivered')
+    await sendEventResult(replacement, retried, { kind: 'result', value: 'current-owner-result' })
+    expect(await pending.outcome).toEqual({ kind: 'result', value: 'current-owner-result' })
+    client.socket.close()
+    replacement.socket.close()
+    await unregister()
+  })
+
+  it('refuses private direct invocation before calling its receiver', async () => {
+    const { ctx, service } = await setup(true)
+    const peer = new OperatorPeer(ctx)
+    ctx.connection.registerRequestPolicy({ admit: () => ({ peer }), accepts: () => true,
+      authorize: () => false, authorizeIndex: () => false })
+    const called = vi.spyOn(service, 'unary')
+    await expect(ctx.typertGateway.invoke({ namespace: 'feed', method: 'unary', args: { label: 'private' }, peer }))
+      .rejects.toMatchObject({ code: 'gateway/resource-unavailable' })
+    expect(called).not.toHaveBeenCalled()
+  })
+
+  it('suppresses a direct unary result completed after identity revocation', async () => {
+    const { ctx, service } = await setup(true)
+    const peer = new OperatorPeer(ctx)
+    const lifetime = new AbortController()
+    ctx.connection.registerRequestPolicy({ admit: () => ({ peer }), accepts: () => !lifetime.signal.aborted,
+      signal: () => lifetime.signal, authorizeIndex: () => false })
+    const call = ctx.typertGateway.invoke({ namespace: 'feed', method: 'late', args: {}, peer })
+    const cancelled = expect(call).rejects.toMatchObject({ code: 'gateway/cancelled' })
+    await new Promise<void>((resolve) => { setImmediate(resolve) })
+    lifetime.abort()
+    service.pendingUnary.resolve('private-late-marker')
+    await cancelled
+  })
+
+  it('cancels only the revoked Peer streams and aborts remaining streams on policy withdrawal', async () => {
+    const { ctx, service } = await setup(true)
+    const a = new OperatorPeer(ctx)
+    const b = new OperatorPeer(ctx)
+    const lifetimes = new Map<PeerScope, AbortController>([[a, new AbortController()], [b, new AbortController()]])
+    const remove = ctx.connection.registerRequestPolicy({
+      admit: () => ({ peer: a }),
+      accepts: peer => lifetimes.get(peer)?.signal.aborted === false,
+      signal: peer => lifetimes.get(peer)?.signal ?? AbortSignal.abort(),
+      authorizeIndex: () => false,
+    })
+    const first = (await ctx.typertGateway.stream({
+      namespace: 'feed', method: 'follow', args: { label: 'employee-a' }, peer: a,
+    }))[Symbol.asyncIterator]()
+    const second = (await ctx.typertGateway.stream({
+      namespace: 'feed', method: 'follow', args: { label: 'employee-b' }, peer: b,
+    }))[Symbol.asyncIterator]()
+    expect(await first.next()).toEqual({ value: 'employee-a:ready', done: false })
+    expect(await second.next()).toEqual({ value: 'employee-b:ready', done: false })
+    const cancelled = expect(first.next()).rejects.toMatchObject({ code: 'gateway/cancelled' })
+    lifetimes.get(a)?.abort()
+    await cancelled
+    expect(service.signals.map(signal => signal.aborted)).toEqual([true, false])
+    await expect(ctx.typertGateway.invoke({ namespace: 'feed', method: 'unary', args: { label: 'no-actor' } }))
+      .rejects.toMatchObject({ code: 'gateway/cancelled' })
+    const withdrawn = expect(second.next()).rejects.toMatchObject({ code: 'gateway/cancelled' })
+    await remove()
+    await withdrawn
+    expect(service.returns).toBe(2)
+  })
+
+  it('binds a Remote event reply to the exact Peer that opened its WebSocket stream', async () => {
+    const { ctx } = await setup(true)
+    const a = new OperatorPeer(ctx)
+    const b = new OperatorPeer(ctx)
+    const lifetime = new AbortController()
+    ctx.connection.registerRequestPolicy({
+      admit: (request) => {
+        const cookie = request.headers instanceof Headers ? request.headers.get('cookie') : request.headers.cookie
+        return { peer: cookie === 'employee=a' ? a : b }
+      },
+      accepts: peer => peer === b || (peer === a && !lifetime.signal.aborted),
+      signal: peer => peer === a ? lifetime.signal : new AbortController().signal,
+      authorizeIndex: () => false,
+    })
+    const source = new RemoteEventSourceProbe()
+    const unregister = ctx.typertGateway.registerRemoteEvents(source.source, REMOTE_HOST)
+    const client = await openEventClient(ctx, 'employee-a-events', 'employee=a')
+    const pending = pendingInvocation(ctx.extend())
+    source.push(pending.dispatch)
+    await vi.waitFor(() => { expect(deliveredInvocation(client)).toBeDefined() })
+    const frame = deliveredInvocation(client)
+    if (frame === undefined) throw new Error('event was not delivered')
+    await expect(sendEventResult({ ...client, cookie: 'employee=b' }, frame, { kind: 'result', value: 'forged' }))
+      .rejects.toThrow('identifies no active event stream')
+    expect(pending.resolve).not.toHaveBeenCalled()
+    await sendEventResult(client, frame, { kind: 'result', value: 'employee-a' })
+    expect(await pending.outcome).toEqual({ kind: 'result', value: 'employee-a' })
+    lifetime.abort()
+    await vi.waitFor(() => { expect(ctx.typertGateway.hasLiveClient()).toBe(false) })
+    client.socket.close()
+    await unregister()
+  })
+
+  it('drops queued Remote event content after its Peer is revoked', async () => {
+    const { ctx } = await setup(true)
+    const peer = new OperatorPeer(ctx)
+    const lifetime = new AbortController()
+    ctx.connection.registerRequestPolicy({ admit: () => ({ peer }), accepts: () => !lifetime.signal.aborted,
+      signal: () => lifetime.signal, authorizeIndex: () => false })
+    const source = new RemoteEventSourceProbe()
+    const unregister = ctx.typertGateway.registerRemoteEvents(source.source, REMOTE_HOST)
+    const stream = await ctx.typertGateway.wireStream.open('$events', { args: {} }, toAsync([]), peer, new AbortController().signal)
+    const iterator = stream[Symbol.asyncIterator]()
+    await iterator.next()
+    source.push({ event: 'fixture/private', args: ['first-private-marker'] })
+    source.push({ event: 'fixture/private', args: ['queued-private-marker'] })
+    expect(await iterator.next()).toMatchObject({ value: { args: ['first-private-marker'] } })
+    await new Promise<void>((resolve) => { setImmediate(resolve) })
+    lifetime.abort()
+    expect(await iterator.next()).toEqual({ done: true, value: undefined })
+    await unregister()
+  })
+
   it('reports Client event streams without counting a bare WebSocket', async () => {
     const { ctx } = await setup(true)
     const source = new RemoteEventSourceProbe()
@@ -1551,7 +1732,8 @@ async function setup(
   transport: boolean,
   gatewayConfig: GatewayConfig = {},
   ready?: AppReady,
-): Promise<{ readonly ctx: Context; readonly service: FeedService }> {
+  connectionConfig?: ConnectionConfig,
+): Promise<{ readonly ctx: Context; readonly service: FeedService; readonly connectionFiber?: ReturnType<Context['plugin']> }> {
   const ctx = new Context()
   roots.push(ctx)
   if (ready !== undefined) ctx.provide('appReady', ready)
@@ -1561,9 +1743,8 @@ async function setup(
   }
   await ctx.plugin(TypertRegistry)
   await ctx.plugin(TypertGatewayService, gatewayConfig)
-  if (transport) {
-    await ctx.plugin({ inject: [...connectionInject], apply: applyConnection })
-  }
+  const connectionFiber = transport ? ctx.plugin({ inject: [...connectionInject], apply: applyConnection }, connectionConfig) : undefined
+  if (connectionFiber !== undefined) await connectionFiber
   await ctx.plugin(FeedService)
   ctx.typert.register({
     package: '@fixture/feed',
@@ -1573,7 +1754,7 @@ async function setup(
     invocations: descriptors(),
   })
   const receiver = ctx.get('feed') as unknown as FeedService & { [symbols.original]?: FeedService }
-  return { ctx, service: receiver[symbols.original] ?? receiver }
+  return { ctx, service: receiver[symbols.original] ?? receiver, ...(connectionFiber === undefined ? {} : { connectionFiber }) }
 }
 
 async function acceptsSocket(ctx: Context): Promise<boolean> {
@@ -1658,9 +1839,9 @@ interface RemoteEventTestClient {
   readonly cookie: string
 }
 
-async function openEventClient(ctx: Context, streamId: string): Promise<RemoteEventTestClient> {
+async function openEventClient(ctx: Context, streamId: string, admittedCookie?: string): Promise<RemoteEventTestClient> {
   const origin = `http://127.0.0.1:${String(ctx.webServer.port)}`
-  const cookie = browserCookie(ctx)
+  const cookie = admittedCookie ?? browserCookie(ctx)
   const socket = new WebSocket(`${origin.replace('http:', 'ws:')}/api/remote.mux`, {
     headers: { cookie },
   })

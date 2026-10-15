@@ -36,6 +36,8 @@ kind: "package-reference"
 <a id="browser-authentication-and-request-trust"></a>
 ## 浏览器认证与请求信任
 
+受控 Host 调用方可复用导出的 `bridge` 函数执行有界 Node-to-Fetch 传输。桥接负责请求头、取消和响应体传递，不执行请求准入。自行注册 Web 路由的调用方必须验证认证与 Host/Origin，并传入完整缓冲请求体上限。
+
 每个 Host RPC 方法和 WebSocket 流都要求一个浏览器会话，不存在按方法区分的 loopback 层。每个进程生成一个随机启动令牌。`dsh-web-app` 打印并打开带 `?token=...` 的应用 URL，保留调用方的 authority 与挂载；`frontend-static` 把根路径和 index 请求交给 `ctx.connection.authorizeIndex`，后者只在 `GET /` 接受该令牌，写入绑定 authority 的签名 cookie，再重定向到干净的 `./`，移除令牌并保留请求目录。缺失、过期、畸形或 authority 不匹配的 cookie 会在 RPC 分发前得到 401。静态资源保持公开。HTTP 载体不在根路径交换之外接受 query token，也不接受 Authorization header token。
 
 cookie 签名密钥是 `ctx.credentials` 中由 `client-connection/browser-session` 拥有的 grant 记录。本地提供方把它持久化到 `$DSH_HOME/.credentials.yaml`；`BrowserAuth` 在 Connection 激活期间加载或创建该记录，并把密钥留在内存中，因此请求认证同步执行。删除或替换该记录会在下一次 Connection 激活时生效。cookie 携带绝对签发与过期区间，`cookieMaxAgeDays` 默认设为 30 天，并在确定性名称与签名 payload 中同时绑定规范化 hostname 和 port。它是 host-only、`Path=/`、`HttpOnly`、`SameSite=Strict`；收到该 index 请求的监听器提供 TLS 时才带上 `Secure`，且只由该监听器自身的协议决定，`publicUrl` 声明与转发头都不参与判断。
@@ -44,9 +46,15 @@ HTTPS cookie 名称与签名 audience 包含 `https:` scheme，因此即使 host
 
 认证之前，每个请求都经过 `src/api-request-trust.ts`。其 `Host` 必须是 loopback、等于监听器的绑定 IP 字面量（端口不限），或与 `trustedHosts` 条目匹配：带端口的 `host:port` 精确匹配，不带端口的条目匹配任意端口。Host 与配置条目按监听器的 scheme 做 WHATWG 默认端口归一化，不采信转发 header 或 `Origin`。附带的 HTTP(S) `Origin` 必须指向同一 authority；此时按 Origin 的 scheme 解析 Host，以支持 HTTPS 代理转发到 HTTP 上游；`sec-fetch-site: cross-site` 一律拒绝。畸形配置 authority 会让插件加载失败。`allowsRemoteAuthorities` 报告 `trustedHosts` 是否允许非 loopback authority；接受绑定 IP 不会改变该列表。这些检查防御 DNS rebinding 与跨站浏览器请求，绝不建立身份。Host/Origin 校验失败返回 403；Host 可信但未认证的请求返回 401。`dsh web --host 0.0.0.0` 不受支持。决策记录：[浏览器请求信任](../../../.agents/notes/implemented/architecture/2026-07-28-api-browser-trust-boundary.zh.md)与[浏览器令牌认证](../../../.agents/notes/implemented/architecture/2026-08-24-browser-token-authentication.zh.md)。
 
-每个被接纳的请求都代表同一个 Peer——操作者。`ctx.connection.operator` 就是这个 `PeerScope`：其 `ctx` 是拥有连接期注册的 Cordis scope，随 Connection 一起释放。`ctx.connection.admit(request)` 执行信任与认证检查，以拒绝状态或操作者作答；`/api` 路由与 Gateway 的 WebSocket 升级都经它接纳，每个 RPC 处理器都收到本次调用的 Peer。`OperatorPeer` 对外导出，供没有 Connection 的组合（例如 Gateway 的进程内载体）以同一约定拥有一个操作者 scope。
+默认部署将请求准入为 `ctx.connection.operator`，该 `PeerScope` 随 Connection 释放。部署可注册一个可撤销的 `ConnectionRequestPolicy`，解析其他 Peer 并处理首页认证；Host/Origin 检查仍先执行。设置 `requireRequestPolicy: true` 后，策略缺失或卸载时拒绝请求，不回退到 operator cookie，也不发布其启动令牌。普通 RPC、共享 RPC 和精确 Fetch 回调接收本次请求准入的 Peer。Connection 在调用前及返回响应前重新验证身份；资源和持续流授权仍由接口所属模块负责。可信进程内载体可向 `createSharedFetchHandler('/api', peer)` 传入已准入 Peer；省略时选择 operator，必要策略可拒绝它。WebSocket 逻辑流和事件授权由 Gateway 负责。`OperatorPeer` 继续供拥有默认 operator 作用域的组合使用。
 
 通过认证的共享 HTTP 请求在传输请求体之前经过 `connection/request` waterfall。监听器可以拒绝新请求，或等待 `next()` 直到响应完成；释放所属 fiber 会移除准入行为。Desktop 使用此扩展点，在已批准的安装期间锁住新的 API 工作，而不取消已接纳的工作。客户端断开会中止处理函数的信号；桥接器停止写入 socket，并排空剩余响应块。WebSocket 流仍由 API Gateway 负责。
+
+持续运行的消费者通过 `peerSignal(peer)` 观察身份过期、撤权和策略卸载。无效 Peer 得到已中止的信号；默认 operator 模式不提供额外生命周期。自定义策略可提供身份信号，卸载策略会中止它发出的全部生命周期信号。该信号只表示身份有效性；资源授权仍由消费者负责。
+
+请求策略也可实现 `authorize(peer, access)`，检查已解码 RPC、精确 Fetch、Remote、事件和元数据操作。Connection 在 RPC/Fetch 执行前及释放响应前检查；Gateway 在 lookup 和每次投递前使用同一策略。操作同时包含可信载体/Host 信息和外部参数，应用必须验证外部参数。仅提供身份的策略由接口所属模块负责资源判断；必要策略缺失时拒绝全部访问。
+
+RPC 准入或处理器可抛出带有安全失败字段的 `ConnectionRpcError`，保留普通关联 RPC 响应信封。这样可在生成解码可能丢弃额外字段前严格校验业务输入。意外异常保留现有传输失败行为；不得将未过滤的内部异常包装为公开失败。
 
 <a id="connection-generation"></a>
 ## Connection generation

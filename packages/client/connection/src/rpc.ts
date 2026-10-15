@@ -22,6 +22,17 @@ export interface ConnectionRpcFailure {
   readonly details: object
 }
 
+/** Expected failure from a Host admission/handler boundary, serialized using the ordinary RPC envelope. */
+export class ConnectionRpcError extends Error {
+  /** Only the operation owner's safe protocol fields are retained for serialization. */
+  readonly failure: ConnectionRpcFailure
+  /** @param failure - safe protocol fields chosen by the operation owner; never an unfiltered internal exception. */
+  constructor(failure: ConnectionRpcFailure) {
+    super(failure.message)
+    this.failure = { code: failure.code, message: failure.message, details: failure.details }
+  }
+}
+
 /** Carrier-neutral result returned by one logical RPC endpoint. */
 export type ConnectionRpcResult<T> =
   | { readonly ok: true; readonly value: T }
@@ -115,14 +126,50 @@ export interface ConnectionIndexResponse {
   end(body?: string): unknown
 }
 
-/** Outcome of admitting one request: the operator Peer it speaks for, or the status refusing it. */
+/** Outcome of admitting one request: its authenticated Peer, or the status refusing it. */
 export type PeerAdmission =
   | { readonly peer: PeerScope }
   | { readonly rejection: 401 | 403 }
 
+/** Host operations checked by a deployment policy before dispatch and delivery. */
+export type ConnectionAccess =
+  | { readonly kind: 'rpc'; readonly channel: string; readonly endpoint: string; readonly payload: unknown }
+  | { readonly kind: 'fetch'; readonly url: URL; readonly method: string }
+  | { readonly kind: 'remote'; readonly namespace: string; readonly method: string; readonly args: Readonly<Record<string, unknown>> }
+  | { readonly kind: 'events' }
+  | { readonly kind: 'event'; readonly event: string; readonly args: readonly unknown[]; readonly agentId?: string; readonly subject?: object }
+  | { readonly kind: 'metadata'; readonly name: string }
+
+/** Deployment-owned identity policy; Connection always applies its Host/Origin fence first. */
+export interface ConnectionRequestPolicy {
+  /**
+   * Resolve the authenticated Peer from trusted transport headers.
+   * @param request - carrier headers after Host/Origin checks.
+   * @returns current Peer or a rejection status.
+   */
+  admit(request: ConnectionTrustRequest): PeerAdmission
+  /**
+   * Revalidate a previously admitted Peer before dispatch and before returning a response.
+   * @param peer - exact instance admitted by this policy.
+   * @returns whether the identity remains active; resource authorization belongs to the endpoint owner.
+   */
+  accepts(peer: PeerScope): boolean
+  /** Optional identity lifetime, aborted on logout, expiry or revocation of this Peer. */
+  readonly signal?: (peer: PeerScope) => AbortSignal
+  /** Optional resource authorization; identity-only policies leave authorization to endpoint owners. */
+  readonly authorize?: (peer: PeerScope, access: ConnectionAccess) => boolean
+  /**
+   * Own the frontend index authentication response, without the operator token exchange.
+   * @param request - frontend request after Host/Origin checks.
+   * @param response - response owned when access is refused.
+   * @returns whether the frontend may serve its index.
+   */
+  authorizeIndex(request: ConnectionIndexRequest, response: ConnectionIndexResponse): boolean
+}
+
 /**
  * Handler invoked after Connection has decoded the transport envelope.
- * `peer` is the Peer the request was admitted as: the operator.
+ * `peer` is the Peer the request was admitted as.
  */
 export type ConnectionRpcHandler = (
   endpoint: string,
@@ -149,7 +196,7 @@ export interface ConnectionFetchRoute {
   /** Buffered requests obey the configured JSON cap; streaming requests arrive with backpressure and no aggregate cap. */
   readonly requestBody: ConnectionRequestBodyMode
   /** Handle one request after the physical carrier has applied its trust and authentication policy. */
-  readonly fetch: (request: Request) => Promise<Response>
+  readonly fetch: (request: Request, peer: PeerScope) => Promise<Response>
 }
 
 /** Host registry for exact Fetch routes that cannot use JSON Remote invocation. */
@@ -195,8 +242,32 @@ export interface HostConnectionHandle {
   readonly rpc: HostConnectionRpc
   /** Exact Fetch routes for streaming or browser-native responses. */
   readonly fetch: HostConnectionFetch
-  /** The operator Peer every admitted request speaks for; its scope lives as long as Connection. */
+  /** Default operator Peer; custom request policies resolve their own scopes. */
   readonly operator: PeerScope
+  /** A required policy never falls back to operator authentication when absent or withdrawn. */
+  readonly requiresRequestPolicy: boolean
+
+  /**
+   * Install the sole deployment identity policy for this caller's fiber lifetime.
+   * @param policy - authenticated admission, current Peer validity and index authentication.
+   * @returns disposer withdrawing this policy; required deployments then refuse requests.
+   */
+  registerRequestPolicy(policy: ConnectionRequestPolicy): () => Promise<void>
+
+  /**
+   * Observe current Peer validity and policy withdrawal for long-lived consumers.
+   * @param peer - exact instance admitted by the selected identity policy.
+   * @returns identity/policy lifetime, an aborted signal for an invalid Peer, or undefined in default operator mode.
+   */
+  peerSignal(peer: PeerScope): AbortSignal | undefined
+
+  /**
+   * Check one operation against the current deployment policy.
+   * @param peer - authenticated request Peer.
+   * @param access - decoded operation or outgoing event, before effects or delivery.
+   * @returns false when identity or resource access is unavailable; default operator deployments allow access.
+   */
+  authorize(peer: PeerScope, access: ConnectionAccess): boolean
 
   /**
    * Whether this deployment accepts authorities beyond loopback: true only
@@ -207,12 +278,13 @@ export interface HostConnectionHandle {
   /**
    * Compose exact Fetch routes and the shared-channel RPC interceptor.
    * @param channel - shared channel mounted by Connection.
-   * @returns Fetch handler for trusted, authenticated requests.
+   * @param peer - admitted request Peer; omitted only by trusted operator carriers.
+   * @returns Fetch handler bound to this request's Peer.
    */
-  createSharedFetchHandler(channel: '/api'): ConnectionFetchHandler
+  createSharedFetchHandler(channel: '/api', peer?: PeerScope): ConnectionFetchHandler
 
   /**
-   * Apply Connection's Host/Origin checks and browser authentication to
+   * Apply Connection's Host/Origin checks and selected identity policy to
    * another Web route.
    * @param request - request headers from the HTTP or upgrade request.
    * @returns rejection status, or undefined when the route may accept the request.
@@ -221,14 +293,14 @@ export interface HostConnectionHandle {
 
   /**
    * Admit one request: it passes {@link requestRejection} and speaks for the
-   * operator, or it is refused with that status.
+   * configured identity, or it is refused with that status.
    * @param request - request headers from the HTTP or upgrade request.
-   * @returns the operator Peer, or the rejection status.
+   * @returns the authenticated Peer, or the rejection status.
    */
   admit(request: ConnectionTrustRequest): PeerAdmission
 
   /**
-   * Authenticate one frontend index request, owning a token redirect or 401.
+   * Authenticate one frontend index request through the selected policy.
    * The cookie this mints is `Secure` when the mounted Web carrier serves TLS,
    * which only that listener's protocol decides.
    * @param request - root or configured-index HTTP request.
@@ -238,9 +310,9 @@ export interface HostConnectionHandle {
   authorizeIndex(request: ConnectionIndexRequest, response: ConnectionIndexResponse): boolean
 
   /**
-   * Add the fresh process token to an ordinary Web application URL.
+   * Add the fresh process token in default operator deployments.
    * @param baseUrl - clean application URL whose authority and mount are preserved.
-   * @returns tokenized URL for initial login; a mount proxy strips its prefix before {@link authorizeIndex}.
+   * @returns clean URL under a custom or required policy; otherwise the tokenized initial-login URL.
    */
   authenticatedUrl(baseUrl: string): string
 }

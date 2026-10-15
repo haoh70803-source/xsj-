@@ -1,0 +1,9 @@
+version: 1
+scenario: education-creation
+profile: headless
+composition: education-creation
+recording: live
+permission: workspace-write
+header:
+  class: education-creation
+  pin: true

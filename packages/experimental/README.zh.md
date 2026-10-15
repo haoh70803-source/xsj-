@@ -36,6 +36,12 @@ kind: "package-group"
 
 | 包 | 职责 | ctx 键 |
 |---|---|---|
+| [`education-platform`](education-platform/README.zh.md) | 私有教育业务 DTO 与依赖仓储的 Host 服务 | `ctx.educationPlatform` |
+| [`education-controller`](education-controller/README.zh.md) | 获准项目/版本 RPC、提交观察及纯文本导出 | `ctx.educationController` |
+| [`education-shell`](education-shell/README.zh.md) | 原生员工项目编辑、版本、导出与身份清理 | `main`、`sidebar.panellist` |
+| [`education-identity`](education-identity/README.zh.md) | 持久员工登录、本人身份与受控 HTTP cookie | `ctx.educationIdentity` |
+| [`education-storage-sqlite`](education-storage-sqlite/README.zh.md) | 原子私有草稿、不可变版本与请求回执 | `ctx.educationRepository` |
+| [`education-bundle`](education-bundle/README.zh.md) | 显式隔离的教育业务存储开发层 | — |
 | [`tool-session-query`](tool-session-query/README.zh.md) | 按工作区授权的模型会话搜索、追踪与事件读取 | — |
 | [`session-search`](session-search/README.zh.md) | 可选实验性全局会话搜索工具 | — |
 | [`ralph-bundle`](ralph-bundle/README.zh.md) | 带隔离 workflow 引擎的可选重复委派 | — |

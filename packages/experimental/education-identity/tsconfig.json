@@ -1,0 +1,16 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": { "rootDir": "src", "outDir": "lib/types" },
+  "include": ["src"],
+  "references": [
+    { "path": "../../core/agent" },
+    { "path": "../../core/session" },
+    { "path": "../../../vendor/cordis" },
+    { "path": "../../../vendor/schemastery" },
+    { "path": "../../util/brand" },
+    { "path": "../../core/scope" },
+    { "path": "../../client/connection/tsconfig.host.json" },
+    { "path": "../../host/webserver" },
+    { "path": "../education-platform" }
+  ]
+}

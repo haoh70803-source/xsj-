@@ -1,0 +1,47 @@
+{
+  "generator": "reviewed upstream exchange.py make_bundle/transcript_digest; Python stdlib JSON",
+  "vectors": [
+    {
+      "name": "integer-times",
+      "raw": "{\"schema_version\":1,\"kind\":\"video-research-input\",\"source_id\":\"synthetic-origin-integer-times\",\"title\":\"合成输入验收\",\"exported_at\":\"2026-10-15T07:31:54.152422+00:00\",\"transcript\":{\"schema_version\":1,\"language\":\"zh\",\"duration_seconds\":1,\"segments\":[{\"start\":0,\"end\":1,\"text\":\"真实原文。\"}],\"full_text\":\"真实原文。\",\"asr\":{}},\"transcript_sha256\":\"2ba17425edd76c51fa499bb7d9b6b13f4adba0cede11c2446fc6d46abc999fd3\",\"video_info\":{\"followers\":0,\"likes\":null},\"media_file\":null}",
+      "canonical": "{\"asr\":{},\"duration_seconds\":1,\"full_text\":\"真实原文。\",\"language\":\"zh\",\"schema_version\":1,\"segments\":[{\"end\":1,\"start\":0,\"text\":\"真实原文。\"}]}",
+      "objectHash": "2ba17425edd76c51fa499bb7d9b6b13f4adba0cede11c2446fc6d46abc999fd3"
+    },
+    {
+      "name": "float-times",
+      "raw": "{\"schema_version\":1,\"kind\":\"video-research-input\",\"source_id\":\"synthetic-origin-float-times\",\"title\":\"合成输入验收\",\"exported_at\":\"2026-10-15T07:31:54.152422+00:00\",\"transcript\":{\"schema_version\":1,\"language\":\"zh\",\"duration_seconds\":1.0,\"segments\":[{\"start\":0.0,\"end\":1.0,\"text\":\"真实原文。\"}],\"full_text\":\"真实原文。\",\"asr\":{}},\"transcript_sha256\":\"5cd674e9e8ddee5799fad14c54596336ebdd59c52af24c6097a68ef54bdea603\",\"video_info\":{\"followers\":0,\"likes\":null},\"media_file\":null}",
+      "canonical": "{\"asr\":{},\"duration_seconds\":1.0,\"full_text\":\"真实原文。\",\"language\":\"zh\",\"schema_version\":1,\"segments\":[{\"end\":1.0,\"start\":0.0,\"text\":\"真实原文。\"}]}",
+      "objectHash": "5cd674e9e8ddee5799fad14c54596336ebdd59c52af24c6097a68ef54bdea603"
+    },
+    {
+      "name": "negative-zero",
+      "raw": "{\"schema_version\":1,\"kind\":\"video-research-input\",\"source_id\":\"synthetic-origin-negative-zero\",\"title\":\"合成输入验收\",\"exported_at\":\"2026-10-15T07:31:54.153970+00:00\",\"transcript\":{\"schema_version\":1,\"language\":\"zh\",\"duration_seconds\":1.0,\"segments\":[{\"start\":-0.0,\"end\":1.0,\"text\":\"合成零值。\"}],\"full_text\":\"合成零值。\",\"asr\":{}},\"transcript_sha256\":\"74711d916d1ef142835d67b23c3d0826dd5950b8c945396709781a461ecfda68\",\"video_info\":{\"followers\":0,\"likes\":null},\"media_file\":null}",
+      "canonical": "{\"asr\":{},\"duration_seconds\":1.0,\"full_text\":\"合成零值。\",\"language\":\"zh\",\"schema_version\":1,\"segments\":[{\"end\":1.0,\"start\":-0.0,\"text\":\"合成零值。\"}]}",
+      "objectHash": "74711d916d1ef142835d67b23c3d0826dd5950b8c945396709781a461ecfda68"
+    },
+    {
+      "name": "small-exponent",
+      "raw": "{\"schema_version\":1,\"kind\":\"video-research-input\",\"source_id\":\"synthetic-origin-small-exponent\",\"title\":\"合成输入验收\",\"exported_at\":\"2026-10-15T07:31:54.153970+00:00\",\"transcript\":{\"schema_version\":1,\"language\":\"zh\",\"duration_seconds\":1e-05,\"segments\":[{\"start\":0.0,\"end\":1e-05,\"text\":\"合成微段。\"}],\"full_text\":\"合成微段。\",\"asr\":{}},\"transcript_sha256\":\"2f588fcb9f5509e62372d95bac639925c568c45f2e387a2ad80d52610eabceae\",\"video_info\":{\"followers\":0,\"likes\":null},\"media_file\":null}",
+      "canonical": "{\"asr\":{},\"duration_seconds\":1e-05,\"full_text\":\"合成微段。\",\"language\":\"zh\",\"schema_version\":1,\"segments\":[{\"end\":1e-05,\"start\":0.0,\"text\":\"合成微段。\"}]}",
+      "objectHash": "2f588fcb9f5509e62372d95bac639925c568c45f2e387a2ad80d52610eabceae"
+    },
+    {
+      "name": "large-float",
+      "raw": "{\"schema_version\":1,\"kind\":\"video-research-input\",\"source_id\":\"synthetic-origin-large-float\",\"title\":\"合成输入验收\",\"exported_at\":\"2026-10-15T07:31:54.153970+00:00\",\"transcript\":{\"schema_version\":1,\"language\":\"zh\",\"duration_seconds\":1e+16,\"segments\":[{\"start\":0.0,\"end\":1e+16,\"text\":\"合成数字格式用例。\"}],\"full_text\":\"合成数字格式用例。\",\"asr\":{}},\"transcript_sha256\":\"a9290c223cef32370d3932d0b06a4195383bf15757c629152fbacbc30cc7cddd\",\"video_info\":{\"followers\":0,\"likes\":null},\"media_file\":null}",
+      "canonical": "{\"asr\":{},\"duration_seconds\":1e+16,\"full_text\":\"合成数字格式用例。\",\"language\":\"zh\",\"schema_version\":1,\"segments\":[{\"end\":1e+16,\"start\":0.0,\"text\":\"合成数字格式用例。\"}]}",
+      "objectHash": "a9290c223cef32370d3932d0b06a4195383bf15757c629152fbacbc30cc7cddd"
+    },
+    {
+      "name": "unicode-metadata",
+      "raw": "{\"schema_version\":1,\"kind\":\"video-research-input\",\"source_id\":\"synthetic-origin-unicode-metadata\",\"title\":\"合成输入验收\",\"exported_at\":\"2026-10-15T07:31:54.153970+00:00\",\"transcript\":{\"schema_version\":1,\"language\":\"zh\",\"duration_seconds\":2.5,\"segments\":[{\"start\":0,\"end\":2.5,\"text\":\"合成中文😀。\"}],\"full_text\":\"合成中文😀。\",\"asr\":{\"warnings\":[{\"\":1.0,\"😀\":1e-07}],\"review_status\":\"未校对\"}},\"transcript_sha256\":\"b99fa3d136c125b855470b7d94fbf0882602e366c1e5b3735cbf014d85b60925\",\"video_info\":{\"followers\":0,\"likes\":null},\"media_file\":null}",
+      "canonical": "{\"asr\":{\"review_status\":\"未校对\",\"warnings\":[{\"\":1.0,\"😀\":1e-07}]},\"duration_seconds\":2.5,\"full_text\":\"合成中文😀。\",\"language\":\"zh\",\"schema_version\":1,\"segments\":[{\"end\":2.5,\"start\":0,\"text\":\"合成中文😀。\"}]}",
+      "objectHash": "b99fa3d136c125b855470b7d94fbf0882602e366c1e5b3735cbf014d85b60925"
+    },
+    {
+      "name": "whitespace-agreement",
+      "raw": "{\"schema_version\":1,\"kind\":\"video-research-input\",\"source_id\":\"synthetic-origin-whitespace-agreement\",\"title\":\"合成输入验收\",\"exported_at\":\"2026-10-15T07:31:54.153970+00:00\",\"transcript\":{\"schema_version\":1,\"language\":\"zh\",\"duration_seconds\":2.0,\"segments\":[{\"start\":0.0,\"end\":1.0,\"text\":\"第一句。\"},{\"start\":1.0,\"end\":2.0,\"text\":\"第二句。\"}],\"full_text\":\"第一句。\\n第二句。\",\"asr\":{}},\"transcript_sha256\":\"50707b19a62bb707c3f0f596af94fd0d8b93db42d21a4e7418eb66cb0e20ce03\",\"video_info\":{\"followers\":0,\"likes\":null},\"media_file\":null}",
+      "canonical": "{\"asr\":{},\"duration_seconds\":2.0,\"full_text\":\"第一句。\\n第二句。\",\"language\":\"zh\",\"schema_version\":1,\"segments\":[{\"end\":1.0,\"start\":0.0,\"text\":\"第一句。\"},{\"end\":2.0,\"start\":1.0,\"text\":\"第二句。\"}]}",
+      "objectHash": "50707b19a62bb707c3f0f596af94fd0d8b93db42d21a4e7418eb66cb0e20ce03"
+    }
+  ]
+}

@@ -893,6 +893,14 @@ describe('tool-schema snapshots', () => {
       .toEqual({ system: '{{system}}', tools: snapshot.initial })
   })
 
+  it('preserves an absent tools field only for an empty catalog', () => {
+    const header = { config: { provider: 'deepseek-official', model: 'content-model' } }
+    expect(restorePinnedToolSchemas(header, [])).toEqual(header)
+    expect('tools' in Object(restorePinnedToolSchemas(header, []))).toBe(false)
+    expect(() => restorePinnedToolSchemas(header, [{ name: 'read' }])).toThrow(/must equal/)
+    expect(() => restorePinnedToolSchemas({ tools: null }, [])).toThrow(/must equal/)
+  })
+
   it('restores ordered tool names only when they match the sidecar', () => {
     const schemas = [{ name: 'read' }, { name: 'write' }]
     expect(restorePinnedToolSchemas({ tools: ['read', 'write'] }, schemas)).toEqual({ tools: schemas })
